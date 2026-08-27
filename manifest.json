@@ -1,0 +1,33 @@
+{
+  "name": "निर्भय भारत कर्मचारी व्यवस्थापन",
+  "short_name": "निर्भय भारत",
+  "description": "निर्भय भारत सोशल संस्था — कर्मचारी हजेरी (check-in/check-out, फोटो, GPS) आणि दैनंदिन कामाचा अहवाल",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F2EFE6",
+  "theme_color": "#1B3B36",
+  "lang": "mr-IN",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
