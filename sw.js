@@ -1,6 +1,6 @@
 // निर्भय भारत — Service Worker
 // प्रत्येक नवीन production build वेळी CACHE_VERSION वाढवा, म्हणजे जुनी cache आपोआप हटेल.
-const CACHE_VERSION = 'nbss-v4';
+const CACHE_VERSION = 'nbss-v7';
 const CACHE_NAME = `nbss-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
