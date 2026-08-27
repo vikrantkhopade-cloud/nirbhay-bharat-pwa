@@ -1,16 +1,16 @@
 // निर्भय भारत — Service Worker
 // प्रत्येक नवीन production build वेळी CACHE_VERSION वाढवा, म्हणजे जुनी cache आपोआप हटेल.
-const CACHE_VERSION = 'nbss-v2';
+const CACHE_VERSION = 'nbss-v3';
 const CACHE_NAME = `nbss-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-maskable-512.png',
-  '/icons/apple-touch-icon.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {
