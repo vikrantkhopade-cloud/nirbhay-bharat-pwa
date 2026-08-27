@@ -17,6 +17,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@500;600;700&family=Poppins:wght@600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Firebase Cloud Database SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
 <style>
 :root{
 --ink:#153f35;
@@ -82,7 +87,6 @@ h1,h2,h3,.display{font-family:'Noto Sans Devanagari', sans-serif;font-weight:700
 .btn-primary:disabled{opacity:0.5;cursor:not-allowed;}
 .btn-secondary{background:none;border:1px solid var(--border);width:100%;color:var(--text); margin-top:8px;}
 .login-error{color:var(--danger); font-size:13px;margin:-4px 0 14px;min-height:0;}
-.login-ok{color:var(--success); font-size:13px;margin:-4px 0 14px;}
 .link-btn{background:none;border:none;color:var(--accent-dark); font-size:13.5px;font-weight:600;width:100%;text-align:center;margin-top:14px;}
 .phone-wrap{display:flex;justify-content:center;}
 .phone{width:100%;max-width:460px;}
@@ -125,9 +129,9 @@ video, canvas{width:100%;border-radius:12px;background:#000;}
 .tabbar button{background:var(--card); border:1px solid var(--border); border-radius:9px;padding:10px 16px;font-size: 13.5px;font-weight:600;color:var(--text-muted);}
 .tabbar button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 .tabbar button.badge-count{background:var(--danger);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-right:6px;}
-.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px;}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px;}
 .metric{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);padding:16px 18px;position:relative;overflow:hidden;}
-.metric .num{font-family:'Poppins'; font-size:28px;font-weight:600;color:var(--ink);}
+.metric .num{font-family:'Poppins'; font-size:26px;font-weight:600;color:var(--ink);}
 .metric .lbl{font-size:12.5px;color:var(--text-muted);margin-top:2px;font-weight:500;}
 .metric.warn .num{color:var(--danger);}
 .panel{background:var(--card);border-radius:var(--radius); box-shadow:var(--shadow);padding:20px;margin-bottom:20px;}
@@ -167,7 +171,8 @@ tr:last-child td{border-bottom:none;}
 .task-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
 .task-form .field{margin:0;}.task-form .field.full{grid-column:1 / -1;}
 .task-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.priority-high{color:var(--danger);}.priority-medium{color:var(--warn);}.priority-low{color:var(--success);}
+.task-audio{width:100%;margin-top:9px;max-height:34px;}
+.task-timer{font-family:'Poppins';font-size:13px;color:var(--danger);font-weight:700;}
 .bottom-nav{display:none;}
 .leadership{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;margin:18px 0 2px;}
 .leader-card{display:flex; flex-direction:column; align-items:center;text-align:center;gap:8px;padding:12px;border:1px solid rgba(21,63,53,.11);border-radius:14px;background:linear-gradient(145deg, rgba(255,255,255,.86), rgba(244,240,226,.75)); box-shadow:0 8px 20px rgba(21,63,53,.06);}
@@ -184,6 +189,8 @@ tr:last-child td{border-bottom:none;}
 .leadership-info img{width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);}
 .leadership-info b{color:var(--ink);}
 .profile-view-box{background:var(--card);border-radius:14px;border:1px solid var(--border);padding:18px;margin-bottom:16px;}
+.center-report-summary{background:linear-gradient(135deg,#fffdf7,#e8f2e7);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px;}
+.center-report-summary h4{margin:0 0 10px;color:var(--ink);font-size:16px;}
 @media (max-width:760px){
 .app-shell{padding:16px 14px 86px;}
 .module-grid,.task-form{grid-template-columns:1fr;}
@@ -206,10 +213,35 @@ tr:last-child td{border-bottom:none;}
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root">
+  <div class="login-wrap">
+    <div class="login-card">
+      <img class="login-logo" src="logo.jpeg" onerror="this.onerror=null;this.src='logo.png';" alt="निर्भय भारत लोगो">
+      <h1>निर्भय भारत सामाजिक संस्था</h1>
+      <p class="tag">पुणे जिल्हा हजेरी आणि दैनंदिन कामाचा अहवाल</p>
+      <div style="text-align:center;padding:20px;color:var(--text-muted);">क्लाऊड डेटा लोड होत आहे...</div>
+    </div>
+  </div>
+</div>
 
 <script>
-const STORAGE_KEY = 'nbss_final_db_v5';
+// -------------------------------------------------------------
+// 🔥 FIREBASE CLOUD CONFIGURATION (LIVE 50+ USERS)
+// -------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyD2bzbv3kdg3qvfFPRp1E7bsT4vb8q8Qxs",
+  authDomain: "nirbhay-bharat-app.firebaseapp.com",
+  databaseURL: "https://nirbhay-bharat-app-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "nirbhay-bharat-app",
+  storageBucket: "nirbhay-bharat-app.firebasestorage.app",
+  messagingSenderId: "709357086965",
+  appId: "1:709357086965:web:fd4fa25596f860c4902f86"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const dbRef = firebase.database().ref('nbss_live_data');
+
 const ORGANIZATION_NAME = 'निर्भय भारत सामाजिक संस्था';
 let DB = null;
 
@@ -232,10 +264,10 @@ function nextEmpId(){
 function seedData(){
   return {
     branches: [
-      {id: 'br_1', name: 'भोर व परिसर केंद्र', address: 'भोर तालुका, पुणे', status: 'सक्रिय'},
-      {id: 'br_2', name: 'पुरंदर केंद्र', address: 'पुरंदर तालुका', status: 'सक्रिय'},
-      {id: 'br_3', name: 'वेल्हा केंद्र', address: 'वेल्हा तालुका', status: 'सक्रिय'},
-      {id: 'br_4', name: 'पुणे शहर केंद्र', address: 'पुणे शहर', status: 'सक्रिय'}
+      {id: 'br_bhor', name: 'भोर व परिसर केंद्र', address: 'भोर तालुका, पुणे', status: 'सक्रिय'},
+      {id: 'br_purandar', name: 'पुरंदर केंद्र', address: 'पुरंदर तालुका', status: 'सक्रिय'},
+      {id: 'br_velha', name: 'वेल्हा केंद्र', address: 'वेल्हा तालुका', status: 'सक्रिय'},
+      {id: 'br_pune', name: 'पुणे शहर केंद्र', address: 'पुणे शहर', status: 'सक्रिय'}
     ],
     employees: [],
     admins: [
@@ -250,38 +282,34 @@ function seedData(){
   };
 }
 
-function loadDB(){
-  try{
-    const val = localStorage.getItem(STORAGE_KEY);
-    if(val) { 
-      DB = JSON.parse(val); 
-    } else { 
-      DB = seedData(); 
-      saveDB(); 
+// रिअल-टाईम क्लाऊड डेटाबेस सिंक (Firebase Live Sync)
+function initFirebaseSync(){
+  dbRef.on('value', (snapshot) => {
+    const val = snapshot.val();
+    if(val) {
+      DB = val;
+    } else {
+      DB = seedData();
+      saveDB();
     }
-  }catch(e){
-    DB = seedData();
-    saveDB();
-  }
-  
-  if(!DB.admins || !Array.isArray(DB.admins)) {
-    DB.admins = seedData().admins;
-  } else {
-    DB.admins = DB.admins.map(a => a.username==='admin2' ? {...a, name:'ईश्वर कामठे'} : a);
-  }
-  if(!DB.branches) DB.branches = seedData().branches;
-  if(!DB.employees) DB.employees = [];
-  if(!DB.attendance) DB.attendance = {};
-  if(!DB.work) DB.work = {};
-  if(!DB.tasks) DB.tasks = [];
-  if(!DB.leaves) DB.leaves = [];
-  if(!DB.announcements) DB.announcements = seedData().announcements;
-  saveDB();
+    
+    if(!DB.admins) DB.admins = seedData().admins;
+    if(!DB.branches) DB.branches = seedData().branches;
+    if(!DB.employees) DB.employees = [];
+    if(!DB.attendance) DB.attendance = {};
+    if(!DB.work) DB.work = {};
+    if(!DB.tasks) DB.tasks = [];
+    if(!DB.leaves) DB.leaves = [];
+    if(!DB.announcements) DB.announcements = seedData().announcements;
+    
+    render();
+  });
 }
 
 function saveDB(){
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
-  catch(e) { console.error('storage error', e); }
+  if(DB) {
+    dbRef.set(DB).catch(err=>console.error('Firebase save error:', err));
+  }
 }
 
 let session = null;
@@ -289,17 +317,26 @@ let loginRole = 'employee';
 let showRegister = false;
 let showEmpProfileModal = false;
 let regPhoto = null;
-let adminTab = 'overview';
+let adminTab = 'reports'; // सुरुवातीला अहवाल केंद्र
+let reportTimeframe = 'daily'; 
+let reportBranchFilter = 'br_bhor'; // डीफॉल्ट 'भोर केंद्र'
 let empDetailId = null;
 let camPurpose = null; 
 let capturedPhoto = null; 
 let gpsCoords = null; 
 let gpsError = null;
 
+// व्हॉइस रेकॉर्डिंग व्हेरिएबल्स
+let taskAudioData = null;
+let taskRecorder = null;
+let taskAudioChunks = [];
+let taskRecordingTimer = null;
+let taskRecordingSeconds = 0;
+
 const root = document.getElementById('root');
 
 function render() {
-  if(!root) return;
+  if(!root || !DB) return;
   if(!session) { 
     root.innerHTML = showRegister? registerView(): loginView(); 
     attachLoginEvents(); 
@@ -361,7 +398,7 @@ function registerView(){
       <div class="field"><label>मोबाईल क्रमांक</label><input id="rg-mobile" type="tel" placeholder="10 अंकी मोबाईल क्रमांक"></div>
       <div class="field"><label>जन्मतारीख</label><input id="rg-dob" type="date"></div>
       <div class="field"><label>पद / कामाचे स्वरूप</label><input id="rg-desig" type="text" placeholder="उदा. समन्वयक / कार्यकर्ते"></div>
-      <div class="field"><label>केंद्र</label>
+      <div class="field"><label>कार्यक्षेत्र केंद्र</label>
         <select id="rg-branch">${DB.branches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select>
       </div>
       <div class="field"><label>लॉगिनसाठी वापरकर्ता नाव</label><input id="rg-username" type="text" placeholder="युझरनेम तयार करा"></div>
@@ -386,13 +423,13 @@ function attachLoginEvents(){
     if(!u || !p) { if(err) err.textContent='कृपया युझरनेम आणि पासवर्ड टाका.'; return; }
 
     if (loginRole==='employee') {
-      const emp = DB.employees.find(e=>e.username.toLowerCase()===u && e.password===p);
+      const emp = (DB.employees||[]).find(e=>e.username.toLowerCase()===u && e.password===p);
       if(!emp){ if(err) err.textContent='वापरकर्ता नाव किंवा पासवर्ड चुकीचा आहे.'; return; }
       if(emp.status==='प्रलंबित') { if(err) err.textContent='तुमची नोंदणी अद्याप प्रशासकाकडून मंजूर झालेली नाही.'; return; }
       if(emp.status==='निष्क्रिय') { if(err) err.textContent='हे खाते निष्क्रिय आहे. कृपया प्रशासकाशी संपर्क साधा.'; return; }
       session = {role:'employee', id:emp.id};
     } else {
-      const adm = DB.admins.find(a=>a.username.toLowerCase()===u && a.password===p);
+      const adm = (DB.admins||[]).find(a=>a.username.toLowerCase()===u && a.password===p);
       if(!adm){ if(err) err.textContent='प्रशासक नाव किंवा पासवर्ड चुकीचा आहे.'; return; }
       session = {role:'admin', username:adm.username, name:adm.name};
     }
@@ -421,13 +458,14 @@ function attachLoginEvents(){
     if(!name || !mobile || !desig || !username || !pass) { if(err) err.textContent='कृपया सर्व आवश्यक माहिती भरा.'; return; }
     if(!/^\d{10}$/.test(mobile)){ if(err) err.textContent='कृपया योग्य 10 अंकी मोबाईल क्रमांक टाका.'; return; }
     if (pass !== pass2){ if(err) err.textContent='दोन्ही पासवर्ड जुळत नाहीत.'; return; }
-    if(DB.employees.find(e=>e.username===username)) { if(err) err.textContent='हे वापरकर्ता नाव आधीच अस्तित्वात आहे.'; return; }
+    if((DB.employees||[]).find(e=>e.username===username)) { if(err) err.textContent='हे वापरकर्ता नाव आधीच अस्तित्वात आहे.'; return; }
     if(!regPhoto) { if(err) err.textContent='कृपया कर्मचारी फोटो घ्या.'; return; }
 
     const newEmp = {
       id: nextEmpId(), name, mobile, dob, branchId, designation:desig,
       username, password:pass, status: 'प्रलंबित', photo:regPhoto
     };
+    if(!DB.employees) DB.employees = [];
     DB.employees.push(newEmp);
     saveDB();
     regPhoto = null;
@@ -491,7 +529,7 @@ function mobileNav(active) {
   return `
   <nav class="bottom-nav">
     <button class="${active==='home'?'active':''}" data-mobile-tab="home">🏠<br>मुख्य</button>
-    <button class="${active==='tasks'?'active':''}" data-mobile-tab="tasks">📋<br>कामे</button>
+    <button class="${active==='tasks'?'active':''}" data-mobile-tab="tasks">📋<br>कामे/सूचना</button>
     <button class="${active==='leave'?'active':''}" data-mobile-tab="leave">➕<br>रजा</button>
     <button class="${active==='profile'?'active':''}" data-mobile-tab="profile">👤<br>प्रोफाइल</button>
   </nav>`;
@@ -519,6 +557,7 @@ function requestLeave(){
 
   const emp = getEmp();
   const branch = emp && (DB.branches||[]).find(b=>b.id===emp.branchId);
+  if(!DB.leaves) DB.leaves = [];
   DB.leaves.push({
     id:'lv_'+Date.now(), 
     employeeId:session.id, 
@@ -550,7 +589,8 @@ function employeeView(){
   const wkDone = !!wk;
   const hrs = hoursBetween(att&&att.checkIn&&att.checkIn.time, att&&att.checkOut&&att.checkOut.time);
   const myDates = Object.keys(DB.attendance||{}).filter(k=>DB.attendance[k].employeeId===session.id).map(k=>DB.attendance[k].date).sort().reverse();
-  const tasks = (DB.tasks||[]).filter(x=>(x.employeeId===emp.id||x.employeeId==='all') && x.status!=='पूर्ण');
+  
+  const myTasks = (DB.tasks||[]).filter(x => x.employeeId === emp.id || x.employeeId === 'all');
 
   return `
   ${topbar(ORGANIZATION_NAME, 'पुणे जिल्हा • '+branch.name)}
@@ -592,15 +632,27 @@ function employeeView(){
     </div>`: ''}
 
     <section class="panel" id="tasks-panel">
-      <div class="toolbar"><h3>माझी कामे</h3><span class="pill pill-wait">${tasks.length} कामे</span></div>
-      ${tasks.length? tasks.map(x=>`
+      <div class="toolbar">
+        <h3>📢 ॲडमिन सूचना व व्हॉइस मेसेज</h3>
+        <span class="pill pill-wait">${myTasks.length} संदेश</span>
+      </div>
+      ${myTasks.length? myTasks.map(x=>`
         <div class="notice">
-          <b>${x.title}</b>
-          <small>${x.due?'अंतिम तारीख: '+fmtDate(x.due): 'नियोजित काम'} <span class="priority-${(x.priority||'medium').toLowerCase()}">${x.priority||'Medium'}</span></small>
+          <b>${x.title || 'महत्त्वाची सूचना'}</b>
+          <small>${x.due?'अंतिम तारीख: '+fmtDate(x.due): 'दिनांक: '+(x.createdAt?fmtDate(x.createdAt):todayStr())} | <span style="font-weight:700;color:var(--ink);">${x.employeeId==='all'?'सर्व कर्मचाऱ्यांसाठी संदेश':'वैयक्तिक संदेश'}</span></small>
+          
+          ${x.audioData ? `
+            <div style="margin-top:8px;background:rgba(217,142,43,0.1);padding:8px;border-radius:8px;">
+              <small style="font-weight:700;color:var(--accent-dark);display:block;margin-bottom:4px;">🎙️ प्रशासकाचा व्हॉइस मेसेज ऐका:</small>
+              <audio class="task-audio" controls preload="metadata" src="${x.audioData}">तुमचा ब्राऊझर ऑडिओ सपोर्ट करत नाही.</audio>
+            </div>`: ''}
+            
           <div class="task-actions" style="margin-top:9px;">
-            <button class="small-btn approve" onclick="completeTask('${x.id}')">पूर्ण म्हणून मार्क करा</button>
+            <button class="small-btn ${x.status==='पूर्ण'?'approve':''}" onclick="toggleTaskStatus('${x.id}')">
+              ${x.status==='पूर्ण'?'✅ काम पूर्ण झाले':'पूर्ण म्हणून मार्क करा'}
+            </button>
           </div>
-        </div>`).join('') : '<div class="empty">सध्या कोणतेही नवीन काम दिलेले नाही.</div>'}
+        </div>`).join('') : '<div class="empty">सध्या कोणतेही नवीन काम किंवा व्हॉइस मेसेज नाही.</div>'}
     </section>
 
     <div class="module-grid">
@@ -627,6 +679,14 @@ function employeeView(){
   ${mobileNav('home')}
   ${modalHTML()}
   ${showEmpProfileModal ? employeeProfileModal(emp, branch) : ''}`;
+}
+
+function toggleTaskStatus(id){
+  const t = (DB.tasks||[]).find(x=>x.id===id);
+  if(t){
+    t.status = t.status === 'पूर्ण' ? 'प्रलंबित' : 'पूर्ण';
+    saveDB(); render();
+  }
 }
 
 function employeeProfileModal(emp, branch){
@@ -657,11 +717,6 @@ function employeeProfileModal(emp, branch){
       <button class="btn btn-primary" onclick="showEmpProfileModal=false;render();" style="margin-top:10px;">बंद करा</button>
     </div>
   </div>`;
-}
-
-function completeTask(id){
-  const t = (DB.tasks||[]).find(x=>x.id===id);
-  if(t){ t.status = 'पूर्ण'; saveDB(); render(); }
 }
 
 function attachEmployeeEvents(){
@@ -800,6 +855,7 @@ function attachModalEvents() {
       return;
     }
     const key = attKey(session.id, todayStr());
+    if(!DB.attendance) DB.attendance = {};
     if(!DB.attendance[key]) DB.attendance[key] = {employeeId:session.id, date:todayStr()};
     const entry = {time:new Date().toISOString(), lat:gpsCoords?.lat?? null, lng:gpsCoords?.lng?? null, photo:capturedPhoto};
     
@@ -819,6 +875,7 @@ function attachModalEvents() {
     const cd = parseInt(document.getElementById('wf-cards')?.value)||0;
     const other = document.getElementById('wf-other')?.value.trim()||'';
     const key = attKey(session.id, todayStr());
+    if(!DB.work) DB.work = {};
     DB.work[key] = {employeeId:session.id, date:todayStr(), newRegistrations:reg, newClaims:cl, formRenewals:rn, cardsIssued:cd, otherWork:other};
     saveDB();
     closeModal();
@@ -840,25 +897,364 @@ function adminView(){
   ${topbar(ORGANIZATION_NAME, 'पुणे जिल्हा प्रशासक डॅशबोर्ड')}
   ${heroWelcome('स्वागत आहे, '+session.name)}
   <div class="tabbar">
+    <button data-tab="reports" class="${adminTab==='reports'?'active':''}">📊 केंद्र अहवाल (दैनिक/साप्ताहिक/मासिक)</button>
+    <button data-tab="tasks" class="${adminTab==='tasks'?'active':''}">🎙️ कामे व व्हॉइस मेसेज पाठवा</button>
     <button data-tab="overview" class="${adminTab==='overview'?'active':''}">आढावा</button>
     <button data-tab="employees" class="${adminTab==='employees'?'active':''}">कर्मचारी</button>
     <button data-tab="pending" class="${adminTab==='pending'?'active':''}">${pendingCount>0? `<span class="badge-count">${pendingCount}</span>`:''} प्रलंबित नोंदणी</button>
-    <button data-tab="tasks" class="${adminTab==='tasks'?'active':''}">कामे द्या</button>
-    <button data-tab="attendance-report" class="${adminTab==='attendance-report'?'active':''}">हजेरी अहवाल</button>
     <button data-tab="leave" class="${adminTab==='leave'?'active':''}">रजा विनंत्या</button>
     <button data-tab="settings" class="${adminTab==='settings'?'active':''}">🔐 ॲडमिन सेटिंग्ज</button>
   </div>
   <div id="admin-body">
-    ${adminTab==='overview'? overviewTab() :
+    ${adminTab==='reports'? reportsCenterTab() :
+      adminTab==='tasks'? tasksTab() :
+      adminTab==='overview'? overviewTab() :
       adminTab==='employees'? employeesTab() :
       adminTab==='pending'? pendingTab() :
-      adminTab==='tasks'? tasksTab() :
-      adminTab==='attendance-report'? attendanceReportTab() :
       adminTab==='leave'? leaveRequestsTab() :
       adminSettingsTab()}
   </div>
   ${leadershipInfo()}
   ${empDetailId? employeeDetailModal() : ''}`;
+}
+
+// केंद्र अहवाल व एक्सेल डाऊनलोड
+function reportsCenterTab(){
+  const branchList = DB.branches || [];
+  const selectedBranchObj = branchList.find(b=>b.id===reportBranchFilter) || branchList[0];
+  const branchEmployees = (DB.employees||[]).filter(e => e.status==='सक्रिय' && (reportBranchFilter==='all' || e.branchId===reportBranchFilter));
+  
+  const today = new Date();
+  let datesToFilter = [];
+  let timeframeTitle = '';
+
+  if (reportTimeframe === 'daily') {
+    datesToFilter.push(todayStr());
+    timeframeTitle = `आजचा अहवाल (${fmtDate(todayStr())})`;
+  } else if (reportTimeframe === 'weekly') {
+    timeframeTitle = `चालू आठवड्याचा अहवाल (मागील ७ दिवस)`;
+    for(let i=0; i<7; i++){
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      datesToFilter.push(d.toISOString().slice(0,10));
+    }
+  } else if (reportTimeframe === 'monthly') {
+    const curMonth = todayStr().slice(0,7);
+    timeframeTitle = `चालू महिन्याचा अहवाल (${curMonth})`;
+    for(let i=1; i<=31; i++){
+      const dayStr = String(i).padStart(2,'0');
+      datesToFilter.push(`${curMonth}-${dayStr}`);
+    }
+  }
+
+  let totalCenterReg = 0, totalCenterClaims = 0, totalCenterRenew = 0, totalCenterCards = 0, totalCenterHours = 0, totalPresentCount = 0;
+
+  const employeeDataRows = branchEmployees.map(emp => {
+    let empReg = 0, empClaims = 0, empRenew = 0, empCards = 0, empHours = 0, empPresentDays = 0;
+    
+    datesToFilter.forEach(d => {
+      const wk = (DB.work||{})[attKey(emp.id, d)];
+      const att = (DB.attendance||{})[attKey(emp.id, d)];
+      if(wk) {
+        empReg += Number(wk.newRegistrations)||0;
+        empClaims += Number(wk.newClaims)||0;
+        empRenew += Number(wk.formRenewals)||0;
+        empCards += Number(wk.cardsIssued)||0;
+      }
+      if(att && att.checkIn) {
+        empPresentDays++;
+        const h = hoursBetween(att.checkIn.time, att.checkOut?.time);
+        if(h) empHours += h;
+      }
+    });
+
+    totalCenterReg += empReg; totalCenterClaims += empClaims; totalCenterRenew += empRenew; totalCenterCards += empCards; totalCenterHours += empHours;
+    if(empPresentDays > 0) totalPresentCount++;
+
+    return { emp, presentDays: empPresentDays, hours: empHours, reg: empReg, claims: empClaims, renew: empRenew, cards: empCards };
+  });
+
+  return `
+  <div class="panel">
+    <div class="toolbar">
+      <h3>📊 केंद्रनिहाय कामाचा अहवाल</h3>
+      <button class="small-btn approve" id="export-excel-btn" style="background:#317a52;color:#fff;">📥 एक्सेल (CSV) डाऊनलोड करा</button>
+    </div>
+
+    <div class="search-row">
+      <div style="flex:1;min-width:200px;">
+        <label style="font-size:12px;color:var(--text-muted);font-weight:600;">कार्यक्षेत्र केंद्र निवडा:</label>
+        <select id="report-branch-select">
+          <option value="all" ${reportBranchFilter==='all'?'selected':''}>सर्व केंद्रे एकत्र</option>
+          ${branchList.map(b=>`<option value="${b.id}" ${reportBranchFilter===b.id?'selected':''}>${b.name}</option>`).join('')}
+        </select>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <label style="font-size:12px;color:var(--text-muted);font-weight:600;">कालावधी निवडा:</label>
+        <select id="report-timeframe-select">
+          <option value="daily" ${reportTimeframe==='daily'?'selected':''}>📅 दैनिक (Daily - आजचे)</option>
+          <option value="weekly" ${reportTimeframe==='weekly'?'selected':''}>📅 साप्ताहिक (Weekly - ७ दिवस)</option>
+          <option value="monthly" ${reportTimeframe==='monthly'?'selected':''}>📅 मासिक (Monthly - चालू महिना)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="center-report-summary">
+      <h4>🏢 ${reportBranchFilter==='all'?'सर्व केंद्रे मिळून':selectedBranchObj?.name} - ${timeframeTitle}</h4>
+      <div class="metric-grid" style="margin-bottom:0;">
+        <div class="metric"><div class="num">${branchEmployees.length}</div><div class="lbl">एकूण कर्मचारी</div></div>
+        <div class="metric"><div class="num">${totalCenterReg}</div><div class="lbl">एकूण नवीन नोंदणी</div></div>
+        <div class="metric"><div class="num">${totalCenterClaims}</div><div class="lbl">एकूण क्लेम</div></div>
+        <div class="metric"><div class="num">${totalCenterRenew}</div><div class="lbl">फॉर्म नूतनीकरण</div></div>
+        <div class="metric"><div class="num">${totalCenterCards}</div><div class="lbl">एकूण कार्ड्स</div></div>
+        <div class="metric"><div class="num">${totalCenterHours.toFixed(1)}</div><div class="lbl">एकूण कामाचे तास</div></div>
+      </div>
+    </div>
+
+    <h3 style="font-size:14px;margin-top:16px;">👤 कर्मचाऱ्यांचे वैयक्तिक कामाचे विवरण:</h3>
+    ${employeeDataRows.length===0? '<div class="empty">या केंद्रावर अद्याप कोणतेही सक्रिय कर्मचारी नाहीत.</div>':
+    `<table>
+      <thead>
+        <tr>
+          <th>कर्मचारी नाव</th>
+          <th>पद</th>
+          <th>उपस्थित दिवस / हजेरी</th>
+          <th>कामाचे तास</th>
+          <th>नोंदणी</th>
+          <th>क्लेम</th>
+          <th>नूतनीकरण</th>
+          <th>कार्ड्स</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${employeeDataRows.map(r=>`
+          <tr>
+            <td><b>${r.emp.name}</b><br><small style="color:var(--text-muted);">${r.emp.id} • ${r.emp.mobile}</small></td>
+            <td>${r.emp.designation}</td>
+            <td><span class="status-tag ${r.presentDays>0?'present':'absent'}">${r.presentDays} दिवस</span></td>
+            <td><b>${r.hours.toFixed(1)} तास</b></td>
+            <td><b>${r.reg}</b></td>
+            <td><b>${r.claims}</b></td>
+            <td><b>${r.renew}</b></td>
+            <td><b>${r.cards}</b></td>
+          </tr>`).join('')}
+        <tr style="background:var(--paper);font-weight:700;">
+          <td colspan="2"><b>🎯 केंद्राची एकूण बेरीज (Total):</b></td>
+          <td><b>${totalPresentCount} उपस्थित</b></td>
+          <td><b>${totalCenterHours.toFixed(1)} तास</b></td>
+          <td><b>${totalCenterReg}</b></td>
+          <td><b>${totalCenterClaims}</b></td>
+          <td><b>${totalCenterRenew}</b></td>
+          <td><b>${totalCenterCards}</b></td>
+        </tr>
+      </tbody>
+    </table>`}
+  </div>`;
+}
+
+function exportCenterReportToCSV(){
+  const branchList = DB.branches || [];
+  const selectedBranchObj = branchList.find(b=>b.id===reportBranchFilter);
+  const branchName = reportBranchFilter==='all'?'सर्व केंद्रे':(selectedBranchObj?.name || 'केंद्र');
+  const branchEmployees = (DB.employees||[]).filter(e => e.status==='सक्रिय' && (reportBranchFilter==='all' || e.branchId===reportBranchFilter));
+  
+  const today = new Date();
+  let datesToFilter = [];
+  let timeframeLabel = '';
+
+  if (reportTimeframe === 'daily') {
+    datesToFilter.push(todayStr());
+    timeframeLabel = 'दैनिक अहवाल (' + todayStr() + ')';
+  } else if (reportTimeframe === 'weekly') {
+    timeframeLabel = 'साप्ताहिक अहवाल (मागील ७ दिवस)';
+    for(let i=0; i<7; i++){
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      datesToFilter.push(d.toISOString().slice(0,10));
+    }
+  } else if (reportTimeframe === 'monthly') {
+    const curMonth = todayStr().slice(0,7);
+    timeframeLabel = 'मासिक अहवाल (' + curMonth + ')';
+    for(let i=1; i<=31; i++){
+      datesToFilter.push(`${curMonth}-${String(i).padStart(2,'0')}`);
+    }
+  }
+
+  let csvContent = '\uFEFF';
+  csvContent += `"${ORGANIZATION_NAME}"\n`;
+  csvContent += `"केंद्र: ${branchName} | कालावधी: ${timeframeLabel}"\n\n`;
+  csvContent += `"कर्मचारी क्रमांक","कर्मचारी नाव","मोबाईल","पद","उपस्थित दिवस","कामाचे तास","नवीन नोंदणी","नवीन क्लेम","फॉर्म नूतनीकरण","कार्ड वाटप"\n`;
+
+  let totReg = 0, totClaims = 0, totRenew = 0, totCards = 0, totHours = 0;
+
+  branchEmployees.forEach(emp => {
+    let empReg = 0, empClaims = 0, empRenew = 0, empCards = 0, empHours = 0, empPresent = 0;
+    
+    datesToFilter.forEach(d => {
+      const wk = (DB.work||{})[attKey(emp.id, d)];
+      const att = (DB.attendance||{})[attKey(emp.id, d)];
+      if(wk) {
+        empReg += Number(wk.newRegistrations)||0;
+        empClaims += Number(wk.newClaims)||0;
+        empRenew += Number(wk.formRenewals)||0;
+        empCards += Number(wk.cardsIssued)||0;
+      }
+      if(att && att.checkIn) {
+        empPresent++;
+        const h = hoursBetween(att.checkIn.time, att.checkOut?.time);
+        if(h) empHours += h;
+      }
+    });
+
+    totReg += empReg; totClaims += empClaims; totRenew += empRenew; totCards += empCards; totHours += empHours;
+    csvContent += `"${emp.id}","${emp.name}","${emp.mobile}","${emp.designation}","${empPresent}","${empHours.toFixed(1)}","${empReg}","${empClaims}","${empRenew}","${empCards}"\n`;
+  });
+
+  csvContent += `\n"एकूण बेरीज (Total)","","","","","${totHours.toFixed(1)} तास","${totReg}","${totClaims}","${totRenew}","${totCards}"\n`;
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `Nirbhay_Bharat_${reportBranchFilter}_${reportTimeframe}_${todayStr()}.csv`;
+  link.click();
+}
+
+function tasksTab(){
+  const active = (DB.employees||[]).filter(e=>e.status==='सक्रिय');
+  return `
+  <div class="panel">
+    <div class="toolbar">
+      <h3>🎙️ कर्मचाऱ्यांसाठी सूचना / काम व व्हॉइस मेसेज</h3>
+      <span class="pill pill-wait">${(DB.tasks||[]).length} मेसेज</span>
+    </div>
+
+    <div class="task-form">
+      <div class="field">
+        <label>कोणत्या कर्मचाऱ्याला पाठवायचा आहे?</label>
+        <select id="task-emp">
+          <option value="all">📢 सर्व कर्मचाऱ्यांना पाठवा (All Employees)</option>
+          ${active.map(e=>`<option value="${e.id}">${e.name} (${e.id})</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>अंतिम तारीख (ऐच्छिक)</label><input id="task-due" type="date" min="${todayStr()}"></div>
+      <div class="field full"><label>लेखी संदेश / कामाचा तपशील</label><textarea id="task-desc" rows="2" placeholder="येथे सूचना किंवा कामाचे स्वरूप टाईप करा"></textarea></div>
+      
+      <div class="field full">
+        <label style="font-weight:700;color:var(--ink);">🎙️ व्हॉइस मेसेज (Voice Note रेकॉर्ड करा):</label>
+        <div class="task-actions" style="margin-top:4px;">
+          <button class="small-btn approve" type="button" id="task-record-btn" style="padding:10px 16px;">🎤 माईक चालू करा (रेकॉर्ड करा)</button>
+          <button class="small-btn reject" type="button" id="task-stop-btn" style="display:none;padding:10px 16px;">⏹️ रेकॉर्डिंग पूर्ण करा</button>
+          <span class="task-timer" id="task-timer" style="display:none;margin-left:10px;">00:00</span>
+        </div>
+        <div id="task-audio-preview" style="margin-top:10px;">
+          ${taskAudioData ? `
+            <audio class="task-audio" controls src="${taskAudioData}"></audio>
+            <button class="small-btn reject" type="button" id="task-audio-remove" style="margin-top:6px;">❌ व्हॉइस मेसेज काढा</button>
+          ` : '<small style="color:var(--text-muted);">माईक बटण दाबून कर्मचाऱ्यांसाठी व्हॉइस मेसेज रेकॉर्ड करा.</small>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="login-error" id="task-error"></div>
+    <button class="btn btn-primary" id="save-task-btn" style="width:auto;margin-top:14px;">📤 मेसेज व काम पाठवा</button>
+
+    <h3 style="margin-top:28px;">पाठवलेले संदेश व व्हॉइस नोट्स</h3>
+    ${(DB.tasks||[]).length===0? '<div class="empty">कोणताही संदेश पाठवलेला नाही.</div>':
+    DB.tasks.slice().reverse().map(t=>{
+      const empName = t.employeeId==='all' ? '📢 सर्व कर्मचारी' : ((DB.employees||[]).find(e=>e.id===t.employeeId)?.name || 'कर्मचारी');
+      return `
+      <div class="notice">
+        <b>${t.title || 'महत्त्वाची सूचना'}</b>
+        <small>कोणासाठी: <b>${empName}</b> | स्थिती: ${t.status || 'प्रलंबित'} | दिनांक: ${t.createdAt ? fmtDate(t.createdAt) : todayStr()}</small>
+        ${t.audioData ? `
+          <div style="margin-top:6px;">
+            <audio class="task-audio" controls preload="metadata" src="${t.audioData}"></audio>
+          </div>`: ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function attachTaskEvents(){
+  const recBtn = document.getElementById('task-record-btn');
+  const stopBtn = document.getElementById('task-stop-btn');
+  const timer = document.getElementById('task-timer');
+  const removeAudioBtn = document.getElementById('task-audio-remove');
+  const errEl = document.getElementById('task-error');
+
+  if(recBtn) recBtn.onclick = async ()=>{
+    if(!navigator.mediaDevices?.getUserMedia){
+      if(errEl) errEl.textContent = 'या ब्राऊझरमध्ये व्हॉइस रेकॉर्डिंग सपोर्ट नाही.';
+      return;
+    }
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      taskAudioChunks = [];
+      taskRecorder = new MediaRecorder(stream);
+      taskRecorder.ondataavailable = (e)=>{ if(e.data.size) taskAudioChunks.push(e.data); };
+      taskRecorder.onstop = ()=>{
+        clearInterval(taskRecordingTimer);
+        taskRecordingSeconds = 0;
+        stream.getTracks().forEach(track=>track.stop());
+        const blob = new Blob(taskAudioChunks, {type: taskRecorder.mimeType || 'audio/webm'});
+        const reader = new FileReader();
+        reader.onloadend = ()=>{
+          taskAudioData = reader.result;
+          render();
+        };
+        reader.readAsDataURL(blob);
+      };
+      taskRecorder.start();
+      recBtn.style.display = 'none';
+      if(stopBtn) stopBtn.style.display = 'inline-block';
+      if(timer){
+        timer.textContent = '00:00';
+        timer.style.display = 'inline-block';
+        taskRecordingSeconds = 0;
+        taskRecordingTimer = setInterval(()=>{
+          taskRecordingSeconds++;
+          const mins = String(Math.floor(taskRecordingSeconds/60)).padStart(2,'0');
+          const secs = String(taskRecordingSeconds%60).padStart(2,'0');
+          timer.textContent = `${mins}:${secs}`;
+        }, 1000);
+      }
+    }catch(err){
+      if(errEl) errEl.textContent = 'माईकची परवानगी नाकारली गेली आहे.';
+    }
+  };
+
+  if(stopBtn) stopBtn.onclick = ()=>{
+    if(taskRecorder && taskRecorder.state !== 'inactive') taskRecorder.stop();
+  };
+
+  if(removeAudioBtn) removeAudioBtn.onclick = ()=>{
+    taskAudioData = null; render();
+  };
+
+  const saveTask = document.getElementById('save-task-btn');
+  if(saveTask) saveTask.onclick = ()=>{
+    const emp = document.getElementById('task-emp')?.value;
+    const due = document.getElementById('task-due')?.value;
+    const desc = document.getElementById('task-desc')?.value.trim();
+    if(!desc && !taskAudioData) { 
+      if(errEl) errEl.textContent = 'कृपया लेखी संदेश लिहा किंवा व्हॉइस मेसेज रेकॉर्ड करा.';
+      return; 
+    }
+    if(!DB.tasks) DB.tasks = [];
+    DB.tasks.push({
+      id:'task_'+Date.now(), 
+      title: desc || 'प्रशासकाचा व्हॉइस मेसेज', 
+      employeeId: emp, 
+      due: due || null, 
+      audioData: taskAudioData, 
+      status:'प्रलंबित',
+      createdAt: todayStr()
+    });
+    taskAudioData = null;
+    saveDB(); 
+    render();
+    alert('✅ संदेश / व्हॉइस मेसेज यशस्वीरित्या कर्मचाऱ्यांना पाठवला गेला आहे!');
+  };
 }
 
 function overviewTab(){
@@ -968,44 +1364,6 @@ function rejectEmp(id){
   saveDB(); render();
 }
 
-function tasksTab(){
-  const active = (DB.employees||[]).filter(e=>e.status==='सक्रिय');
-  return `
-  <div class="panel">
-    <h3>नवीन काम नियुक्त करा</h3>
-    <div class="task-form">
-      <div class="field"><label>कर्मचारी निवडा</label>
-        <select id="task-emp"><option value="all">सर्व कर्मचारी</option>${active.map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</select>
-      </div>
-      <div class="field"><label>अंतिम तारीख</label><input id="task-due" type="date" min="${todayStr()}"></div>
-      <div class="field full"><label>कामाचा तपशील</label><textarea id="task-desc" rows="2" placeholder="कामाचे स्वरूप लिहा"></textarea></div>
-      <div class="field"><label>प्राधान्य</label>
-        <select id="task-prio"><option value="High">High</option><option value="Medium" selected>Medium</option><option value="Low">Low</option></select>
-      </div>
-    </div>
-    <button class="btn btn-primary" id="save-task-btn" style="width:auto;margin-top:10px;">काम द्या</button>
-    <h3 style="margin-top:24px;">दिलेली कामे</h3>
-    ${(DB.tasks||[]).length===0? '<div class="empty">कोणतेही काम दिलेले नाही.</div>':
-    DB.tasks.map(t=>`<div class="notice"><b>${t.title}</b><small>स्थिती: ${t.status || 'प्रलंबित'} | प्राधान्य: ${t.priority}</small></div>`).join('')}
-  </div>`;
-}
-
-function attendanceReportTab(){
-  const active = (DB.employees||[]).filter(e=>e.status==='सक्रिय');
-  const ds = todayStr();
-  return `
-  <div class="panel">
-    <h3>कर्मचारी हजेरी अहवाल (आजचा दिनांक: ${fmtDate(ds)})</h3>
-    ${active.length===0? '<div class="empty">सक्रिय कर्मचारी उपलब्ध नाहीत.</div>':
-    `<table><tr><th>कर्मचारी</th><th>चेक-इन</th><th>चेक-आउट</th><th>कामाचे तास</th></tr>
-    ${active.map(e=>{
-      const a = (DB.attendance||{})[attKey(e.id,ds)];
-      const h = hoursBetween(a?.checkIn?.time, a?.checkOut?.time);
-      return `<tr><td><b>${e.name}</b></td><td>${a?.checkIn?fmtTime(new Date(a.checkIn.time)):'-'}</td><td>${a?.checkOut?fmtTime(new Date(a.checkOut.time)):'-'}</td><td>${h!==null?h.toFixed(1)+' तास':'-'}</td></tr>`;
-    }).join('')}</table>`}
-  </div>`;
-}
-
 function leaveRequestsTab(){
   return `
   <div class="panel">
@@ -1050,17 +1408,16 @@ function attachAdminEvents(){
     btn.onclick = ()=>{ adminTab = btn.dataset.tab; render(); };
   });
 
-  const saveTask = document.getElementById('save-task-btn');
-  if(saveTask) saveTask.onclick = ()=>{
-    const emp = document.getElementById('task-emp')?.value;
-    const due = document.getElementById('task-due')?.value;
-    const desc = document.getElementById('task-desc')?.value.trim();
-    const prio = document.getElementById('task-prio')?.value;
-    if(!desc) { alert('कृपया कामाचा तपशील भरा.'); return; }
-    DB.tasks.push({id:'task_'+Date.now(), title:desc, employeeId:emp, due:due||null, priority:prio, status:'प्रलंबित'});
-    saveDB(); render();
-    alert('काम यशस्वीरित्या नियुक्त केले!');
-  };
+  const branchSel = document.getElementById('report-branch-select');
+  if(branchSel) branchSel.onchange = (e)=>{ reportBranchFilter = e.target.value; render(); };
+
+  const timeSel = document.getElementById('report-timeframe-select');
+  if(timeSel) timeSel.onchange = (e)=>{ reportTimeframe = e.target.value; render(); };
+
+  const exportBtn = document.getElementById('export-excel-btn');
+  if(exportBtn) exportBtn.onclick = exportCenterReportToCSV;
+
+  attachTaskEvents();
 
   const passBtn = document.getElementById('adm-change-pass-btn');
   if(passBtn) passBtn.onclick = ()=>{
@@ -1089,9 +1446,8 @@ function attachAdminEvents(){
 const origRender = render;
 render = function() { origRender(); attachModalEvents(); };
 
-// सुरुवातीला लोड करा
-loadDB();
-render();
+// क्लाऊड सिंक सुरू करा
+initFirebaseSync();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
