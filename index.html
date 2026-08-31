@@ -343,15 +343,11 @@ function playVoiceAlert(spokenText) {
   }
 }
 
-// -------------------------------------------------------------
-// ⏰ रोज सकाळी हजेरीचे मॉर्निंग नोटिफिकेशन (Morning Attendance Alert)
-// -------------------------------------------------------------
 function checkMorningNotification() {
   const currentHour = new Date().getHours();
   const lastMorningDate = localStorage.getItem('nbss_last_morning_alert');
   const today = todayStr();
 
-  // सकाळी ९ ते ११ च्या दरम्यान एकदाच अलर्ट
   if (currentHour >= 9 && currentHour <= 12 && lastMorningDate !== today) {
     localStorage.setItem('nbss_last_morning_alert', today);
     showSystemNotification("🌅 शुभ सकाळ - निर्भय भारत संस्था", "कृपया आज कामावर आल्यावर आपली फोटो व GPS हजेरी वेळेत नोंदवा.");
@@ -362,8 +358,26 @@ function checkMorningNotification() {
 }
 
 // -------------------------------------------------------------
-// 🔐 १. बायोमेट्रिक / थंब (Thumb Login - WebAuthn)
+// 🔐 १. अँड्रॉइड-अचूक बायोमेट्रिक / थंब (Thumb Login Fix)
 // -------------------------------------------------------------
+function bufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+function base64ToBuffer(base64) {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
 async function registerBiometric(userType, identifier) {
   if (!window.PublicKeyCredential) {
     alert("तुमच्या फोनचा ब्राऊझर फिंगरप्रिंट सपोर्ट करत नाही.");
@@ -372,28 +386,44 @@ async function registerBiometric(userType, identifier) {
   try {
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
+    const userId = Uint8Array.from(identifier, c => c.charCodeAt(0));
+
     const credential = await navigator.credentials.create({
       publicKey: {
-        challenge,
-        rp: { name: "निर्भय भारत संस्था" },
+        challenge: challenge,
+        rp: { name: "निर्भय भारत सामाजिक संस्था" },
         user: {
-          id: Uint8Array.from(identifier, c => c.charCodeAt(0)),
+          id: userId,
           name: identifier,
           displayName: identifier
         },
-        pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
-        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+        pubKeyCredParams: [
+          { alg: -7, type: "public-key" },  // ES256 (Android/iOS)
+          { alg: -257, type: "public-key" } // RS256
+        ],
+        authenticatorSelection: { 
+          authenticatorAttachment: "platform", 
+          userVerification: "preferred" 
+        },
         timeout: 60000
       }
     });
+
     if (credential) {
-      localStorage.setItem('nbss_bio_auth', JSON.stringify({ type: userType, id: identifier, linkedAt: new Date().toISOString() }));
-      alert("✅ फिंगरप्रिंट (Thumb) यशस्वीरित्या लिंक झाले आहे!");
+      const credIdBase64 = bufferToBase64(credential.rawId);
+      localStorage.setItem('nbss_bio_auth', JSON.stringify({ 
+        type: userType, 
+        id: identifier, 
+        credId: credIdBase64,
+        linkedAt: new Date().toISOString() 
+      }));
+      alert("✅ फिंगरप्रिंट (Thumb) यशस्वीरित्या लिंक झाले आहे! आता तुम्ही थेट लॉगिन करू शकता.");
       render();
       return true;
     }
   } catch (err) {
-    alert("फिंगरप्रिंट नोंदणी रद्द झाली किंवा त्रुटी आली.");
+    console.error(err);
+    alert("फिंगरप्रिंट नोंदणी रद्द झाली किंवा त्रुटी आली. कृपया फोनवर स्क्रीन लॉक / फिंगरप्रिंट चालू असल्याची खात्री करा.");
     return false;
   }
 }
@@ -412,13 +442,28 @@ async function loginWithBiometric() {
     alert("⚠️ या मोबाईलवर अद्याप कोणताही थंब लिंक केलेला नाही.\n\nकृपया प्रथम युझरनेम आणि पासवर्डने लॉगिन करा आणि आत जाऊन '👆 थंब जोडा' वर क्लिक करा.");
     return;
   }
-  const { type, id } = JSON.parse(bioData);
+  const { type, id, credId } = JSON.parse(bioData);
   try {
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
-    const assertion = await navigator.credentials.get({
-      publicKey: { challenge, timeout: 60000, userVerification: "required" }
-    });
+
+    const getOptions = {
+      publicKey: { 
+        challenge: challenge, 
+        timeout: 60000, 
+        userVerification: "preferred"
+      }
+    };
+
+    if (credId) {
+      getOptions.publicKey.allowCredentials = [{
+        id: base64ToBuffer(credId),
+        type: 'public-key',
+        transports: ['internal']
+      }];
+    }
+
+    const assertion = await navigator.credentials.get(getOptions);
     if(assertion) {
       if(type === 'admin') {
         const adm = (DB.admins||[]).find(a => a.username === id);
@@ -431,12 +476,13 @@ async function loginWithBiometric() {
       }
     }
   } catch(e) {
-    alert("फिंगरप्रिंट पडताळणी रद्द केली किंवा अयशस्वी झाली.");
+    console.warn("Biometric verification error:", e);
+    alert("फिंगरप्रिंट पडताळणी रद्द केली किंवा अयशस्वी झाली. कृपया पुन्हा प्रयत्न करा.");
   }
 }
 
 // -------------------------------------------------------------
-// 📷 २. AI Face Lock (Face Scan)
+// 📷 २. AI Face Lock
 // -------------------------------------------------------------
 function startFaceUnlock() { openCamera('facelock'); }
 
@@ -472,7 +518,6 @@ function compareFaceImages(capturedDataUrl, targetDataUrl) {
   });
 }
 
-// हेल्पर फंक्शन: Employees ऑब्जेक्टचे Array मध्ये रूपांतर
 function getEmployeesList() {
   if (!DB || !DB.employees) return [];
   return Array.isArray(DB.employees) ? DB.employees : Object.values(DB.employees);
@@ -489,7 +534,7 @@ function getLeavesList() {
 }
 
 // -------------------------------------------------------------
-// रिअल-टाईम क्लाऊड डेटाबेस सिंक व ऑटो-नोटिफिकेशन हँडलर
+// रिअल-टाईम क्लाऊड डेटाबेस सिंक
 // -------------------------------------------------------------
 function initFirebaseSync(){
   dbRef.on('value', (snapshot) => {
@@ -514,7 +559,6 @@ function initFirebaseSync(){
     const pendingEmps = allEmps.filter(e => e.status === 'प्रलंबित');
     const allTasks = getTasksList();
 
-    // 🔔 १. ॲडमिनसाठी नोटिफिकेशन: नवीन कर्मचाऱ्याने नोंदणी केल्यास
     if (lastKnownPendingEmpCount !== null && pendingEmps.length > lastKnownPendingEmpCount) {
       if (session && session.role === 'admin') {
         const latestPending = pendingEmps[pendingEmps.length - 1];
@@ -524,7 +568,6 @@ function initFirebaseSync(){
     }
     lastKnownPendingEmpCount = pendingEmps.length;
 
-    // 🔔 २. कर्मचाऱ्यासाठी नोटिफिकेशन: ॲडमिनने नवीन काम किंवा ऑडिओ दिल्यास
     if (lastKnownTaskCount !== null && allTasks.length > lastKnownTaskCount) {
       if (session && session.role === 'employee') {
         const latestTask = allTasks[allTasks.length - 1];
@@ -552,7 +595,7 @@ let loginRole = 'employee';
 let showRegister = false;
 let showEmpProfileModal = false;
 let regPhoto = null;
-let adminTab = 'pending'; // नवीन नोंदणी लगेच दिसावी म्हणून डीफॉल्ट 'pending'
+let adminTab = 'pending'; 
 let reportTimeframe = 'daily'; 
 let reportBranchFilter = 'br_bhor';
 let empDetailId = null;
@@ -613,7 +656,7 @@ function loginView(){
       ${loginRole==='employee'?'<button class="link-btn" id="go-register">नवीन वापरकर्ता नोंदणी</button>' : ''}
       <div class="demo-hint" style="margin-top:16px;font-size:12px;color:var(--text-muted);background:var(--paper);border-radius:9px;padding:10px;line-height:1.6;">
         प्रशासक: <b>admin1</b> किंवा <b>admin2</b>.<br>
-        नवीन कर्मचाऱ्यांनी प्रथम नोंदणी करावी; प्रशासकाने मंजूर केल्यावर लॉगिन होईल.
+        थंब नोंदणी केल्यानंतर एका स्पर्शात थेट लॉगिन होईल.
       </div>
       ${leadershipShowcase('login-leadership')}
     </div>
@@ -714,7 +757,6 @@ function attachLoginEvents(){
       registeredAt: new Date().toISOString()
     };
 
-    // Firebase वर थेट ऑब्जेक्ट की म्हणून सेव्ह करणे (Realtime Sync Fix)
     if(!DB.employees) DB.employees = {};
     DB.employees[newId] = newEmp;
     
@@ -723,7 +765,7 @@ function attachLoginEvents(){
     showRegister = false;
     loginRole = 'employee';
     render();
-    alert(`✅ नोंदणी यशस्वी झाली आहे! (तुमचा आयडी: ${newId})\n\nप्रशासकाने (Admin) मंजूर केल्यानंतर तुम्ही लॉगिन करू शकाल.`);
+    alert(`✅ नोंदणी यशस्वी झाली आहे! (तुमचा आयडी: ${newId})\n\nप्रशासकाने मंजूर केल्यावर तुम्ही लॉगिन करू शकाल.`);
   };
 }
 
@@ -1234,7 +1276,6 @@ function adminView(){
   ${empDetailId? employeeDetailModal() : ''}`;
 }
 
-// केंद्र अहवाल व एक्सेल डाऊनलोड
 function reportsCenterTab(){
   const branchList = DB.branches || [];
   const selectedBranchObj = branchList.find(b=>b.id===reportBranchFilter) || branchList[0];
@@ -1866,7 +1907,6 @@ function attachAdminEvents(){
 const origRender = render;
 render = function() { origRender(); attachModalEvents(); };
 
-// क्लाऊड सिंक सुरू करा
 initFirebaseSync();
 
 if('serviceWorker' in navigator){
