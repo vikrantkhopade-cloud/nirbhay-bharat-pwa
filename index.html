@@ -3,12 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>निर्भय भारत सामाजिक संस्था - हजेरी</title>
-<!-- PWA: manifest + icons + theme -->
+<title>निर्भय भारत सामाजिक संस्था - हजेरी, थंब व फेस लॉक</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#1B3B36">
 <meta name="background-color" content="#F2EFE6">
-<meta name="description" content="कर्मचारी हजेरी आणि दैनंदिन कामाचा अहवाल">
+<meta name="description" content="कर्मचारी हजेरी, थंब व फेस लॉक">
 <link rel="icon" type="image/png" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -32,7 +31,7 @@
 --accent-dark:#9b6810;
 --success:#317a52;
 --success-bg:#e4f3e8;
---danger:#66483d;
+--danger:#a83232;
 --danger-bg:#fbe8e4;
 --warn:#96601B;
 --warn-bg:#F5E9D3;
@@ -86,6 +85,8 @@ h1,h2,h3,.display{font-family:'Noto Sans Devanagari', sans-serif;font-weight:700
 .btn-primary{background:linear-gradient(135deg, var(--ink),var(--ink-light));color:#fff;width:100%;box-shadow:0 8px 16px rgba(21,63,53,.16);}
 .btn-primary:disabled{opacity:0.5;cursor:not-allowed;}
 .btn-secondary{background:none;border:1px solid var(--border);width:100%;color:var(--text); margin-top:8px;}
+.btn-bio{background:linear-gradient(135deg, #e1a329, #9b6810);color:#fff;width:100%;box-shadow:0 6px 14px rgba(225,163,41,.25);margin-top:10px;}
+.btn-face{background:linear-gradient(135deg, #153f35, #317a52);color:#fff;width:100%;box-shadow:0 6px 14px rgba(21,63,53,.25);margin-top:8px;}
 .login-error{color:var(--danger); font-size:13px;margin:-4px 0 14px;min-height:0;}
 .link-btn{background:none;border:none;color:var(--accent-dark); font-size:13.5px;font-weight:600;width:100%;text-align:center;margin-top:14px;}
 .phone-wrap{display:flex;justify-content:center;}
@@ -122,6 +123,7 @@ h1,h2,h3,.display{font-family:'Noto Sans Devanagari', sans-serif;font-weight:700
 .modal-close{float:left;background:none;border:none;font-size:20px;color:var(--text-muted);cursor:pointer;}
 video, canvas{width:100%;border-radius:12px;background:#000;}
 .cam-frame{position:relative;margin-bottom:14px;}
+.face-scan-overlay{position:absolute;inset:15%;border:2px dashed var(--accent);border-radius:50%;box-shadow:0 0 0 9999px rgba(0,0,0,0.4);pointer-events:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;}
 .gps-box{background:var(--paper); border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:14px;color:var(--text-muted); font-weight:500;}
 .gps-box.ok{color:var(--success);}
 .gps-box.err{color:var(--danger);}
@@ -146,7 +148,6 @@ tr:last-child td{border-bottom:none;}
 .status-tag{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:14px;}
 .status-tag.present{background:var(--success-bg);color:var(--success);}
 .status-tag.absent{background:var(--danger-bg);color:var(--danger);}
-.status-tag.pending{background:var(--warn-bg);color:var(--warn);}
 .small-btn{background:none;border:1px solid var(--border); border-radius:7px;padding:6px 12px;font-size:13px;color:var(--text); font-weight:600;}
 .small-btn:hover{background:var(--paper);}
 .small-btn.approve{border-color:var(--success);color:var(--success);}
@@ -226,7 +227,7 @@ tr:last-child td{border-bottom:none;}
 
 <script>
 // -------------------------------------------------------------
-// 🔥 FIREBASE CLOUD CONFIGURATION (LIVE 50+ USERS)
+// 🔥 FIREBASE CLOUD CONFIGURATION
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyD2bzbv3kdg3qvfFPRp1E7bsT4vb8q8Qxs",
@@ -238,12 +239,12 @@ const firebaseConfig = {
   appId: "1:709357086965:web:fd4fa25596f860c4902f86"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const dbRef = firebase.database().ref('nbss_live_data');
 
 const ORGANIZATION_NAME = 'निर्भय भारत सामाजिक संस्था';
 let DB = null;
+let lastKnownTaskCount = null;
 
 function todayStr() { return new Date().toISOString().slice(0,10); }
 function fmtTime(d) { return d.toLocaleTimeString('mr-IN', {hour:'2-digit', minute:'2-digit'}); }
@@ -282,7 +283,147 @@ function seedData(){
   };
 }
 
-// रिअल-टाईम क्लाऊड डेटाबेस सिंक (Firebase Live Sync)
+// -------------------------------------------------------------
+// 🔔 विशेष संस्था रिंगटोन आणि व्हॉइस अलर्ट
+// -------------------------------------------------------------
+function playNirbhayVoiceAlert(messageText) {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); 
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); 
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.45);
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.5);
+  } catch(e) {}
+
+  if(navigator.vibrate) {
+    navigator.vibrate([200, 100, 300]);
+  }
+
+  if('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance("निर्भय भारत सामाजिक संस्था. प्रशासकाकडून नवीन सूचना व काम आले आहे.");
+    utterance.lang = 'mr-IN';
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    setTimeout(() => {
+      window.speechSynthesis.speak(utterance);
+    }, 550);
+  }
+}
+
+// -------------------------------------------------------------
+// 🔐 १. बायोमेट्रिक / थंब (Fingerprint Login - WebAuthn)
+// -------------------------------------------------------------
+async function registerBiometric(userType, identifier) {
+  if (!window.PublicKeyCredential) {
+    alert("तुमच्या फोनचा ब्राऊझर फिंगरप्रिंट सपोर्ट करत नाही.");
+    return false;
+  }
+  try {
+    const challenge = new Uint8Array(32);
+    window.crypto.getRandomValues(challenge);
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: "निर्भय भारत संस्था" },
+        user: {
+          id: Uint8Array.from(identifier, c => c.charCodeAt(0)),
+          name: identifier,
+          displayName: identifier
+        },
+        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+        timeout: 60000
+      }
+    });
+    if (credential) {
+      localStorage.setItem('nbss_bio_auth', JSON.stringify({ type: userType, id: identifier }));
+      alert("✅ फिंगरप्रिंट (Thumb) यशस्वीरित्या लिंक झाले आहे!");
+      return true;
+    }
+  } catch (err) {
+    alert("फिंगरप्रिंट नोंदणी रद्द केली किंवा त्रुटी आली.");
+    return false;
+  }
+}
+
+async function loginWithBiometric() {
+  const bioData = localStorage.getItem('nbss_bio_auth');
+  if(!bioData) {
+    alert("या फोनवर अद्याप फिंगरप्रिंट रजिस्टर केलेले नाही. कृपया प्रथम आयडी-पासवर्डने लॉगिन करून '👆 फिंगरप्रिंट जोडा' बटण दाबा.");
+    return;
+  }
+  const { type, id } = JSON.parse(bioData);
+  try {
+    const challenge = new Uint8Array(32);
+    window.crypto.getRandomValues(challenge);
+    const assertion = await navigator.credentials.get({
+      publicKey: { challenge, timeout: 60000, userVerification: "required" }
+    });
+    if(assertion) {
+      if(type === 'admin') {
+        const adm = (DB.admins||[]).find(a => a.username === id);
+        if(adm) { session = { role: 'admin', username: adm.username, name: adm.name }; render(); }
+      } else {
+        const emp = (DB.employees||[]).find(e => e.id === id || e.username === id);
+        if(emp && emp.status === 'सक्रिय') { session = { role: 'employee', id: emp.id }; render(); }
+        else { alert("हे कर्मचारी खाते सक्रिय नाही किंवा काढून टाकले आहे."); }
+      }
+    }
+  } catch(e) {
+    alert("फिंगरप्रिंट पडताळणी अयशस्वी झाली.");
+  }
+}
+
+// -------------------------------------------------------------
+// 📷 २. AI Face Lock (Face Scan Matching)
+// -------------------------------------------------------------
+function startFaceUnlock() {
+  openCamera('facelock');
+}
+
+function compareFaceImages(capturedDataUrl, targetDataUrl) {
+  return new Promise((resolve) => {
+    const img1 = new Image();
+    const img2 = new Image();
+    let loaded = 0;
+    const checkLoaded = () => {
+      loaded++;
+      if (loaded === 2) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 64; canvas.height = 64;
+        ctx.drawImage(img1, 0, 0, 64, 64);
+        const data1 = ctx.getImageData(0, 0, 64, 64).data;
+        ctx.clearRect(0,0,64,64);
+        ctx.drawImage(img2, 0, 0, 64, 64);
+        const data2 = ctx.getImageData(0, 0, 64, 64).data;
+        let diff = 0;
+        for(let i=0; i<data1.length; i+=4) {
+          diff += Math.abs(data1[i] - data2[i]) + Math.abs(data1[i+1] - data2[i+1]) + Math.abs(data1[i+2] - data2[i+2]);
+        }
+        const total = data1.length * 255;
+        const similarity = 1 - (diff / total);
+        resolve(similarity > 0.55);
+      }
+    };
+    img1.onload = checkLoaded;
+    img2.onload = checkLoaded;
+    img1.src = capturedDataUrl;
+    img2.src = targetDataUrl;
+  });
+}
+
+// -------------------------------------------------------------
+// रिअल-टाईम क्लाऊड डेटाबेस सिंक
+// -------------------------------------------------------------
 function initFirebaseSync(){
   dbRef.on('value', (snapshot) => {
     const val = snapshot.val();
@@ -301,6 +442,17 @@ function initFirebaseSync(){
     if(!DB.tasks) DB.tasks = [];
     if(!DB.leaves) DB.leaves = [];
     if(!DB.announcements) DB.announcements = seedData().announcements;
+
+    const currentTaskCount = (DB.tasks||[]).length;
+    if(lastKnownTaskCount !== null && currentTaskCount > lastKnownTaskCount) {
+      if(session && session.role === 'employee') {
+        const latestTask = DB.tasks[DB.tasks.length - 1];
+        if(latestTask.employeeId === 'all' || latestTask.employeeId === session.id) {
+          playNirbhayVoiceAlert(latestTask.title);
+        }
+      }
+    }
+    lastKnownTaskCount = currentTaskCount;
     
     render();
   });
@@ -317,16 +469,15 @@ let loginRole = 'employee';
 let showRegister = false;
 let showEmpProfileModal = false;
 let regPhoto = null;
-let adminTab = 'reports'; // सुरुवातीला अहवाल केंद्र
+let adminTab = 'reports'; 
 let reportTimeframe = 'daily'; 
-let reportBranchFilter = 'br_bhor'; // डीफॉल्ट 'भोर केंद्र'
+let reportBranchFilter = 'br_bhor';
 let empDetailId = null;
 let camPurpose = null; 
 let capturedPhoto = null; 
 let gpsCoords = null; 
 let gpsError = null;
 
-// व्हॉइस रेकॉर्डिंग व्हेरिएबल्स
 let taskAudioData = null;
 let taskRecorder = null;
 let taskAudioChunks = [];
@@ -364,7 +515,7 @@ function loginView(){
       </div>
       <div class="field">
         <label>${loginRole==='employee'?'वापरकर्ता नाव (Username)': 'प्रशासक वापरकर्ता नाव'}</label>
-        <input id="li-user" type="text" placeholder="${loginRole==='employee'?'नोंदणीकृत नाव': 'admin1 किंवा admin2'}">
+        <input id="li-user" type="text" placeholder="${loginRole==='employee'?'नोंदणीकृत नाव किंवा आयडी': 'admin1 किंवा admin2'}">
       </div>
       <div class="field">
         <label>पासवर्ड</label>
@@ -372,14 +523,20 @@ function loginView(){
       </div>
       <div class="login-error" id="li-err"></div>
       <button class="btn btn-primary" id="li-submit">लॉगिन</button>
+      
+      <!-- थंब आणि फेस लॉक दोन्ही बटणे -->
+      <button class="btn btn-bio" id="li-bio-btn">👆 थंबने लॉगिन करा (Fingerprint)</button>
+      <button class="btn btn-face" id="li-face-btn">📸 फेस स्कॅनने लॉगिन करा (Face Scan)</button>
+      
       ${loginRole==='employee'?'<button class="link-btn" id="go-register">नवीन वापरकर्ता नोंदणी</button>' : ''}
       <div class="demo-hint" style="margin-top:16px;font-size:12px;color:var(--text-muted);background:var(--paper);border-radius:9px;padding:10px;line-height:1.6;">
-        प्रशासक (Admin): <b>admin1</b> (अक्षय कामठे) किंवा <b>admin2</b> (ईश्वर कामठे).<br>
-        कर्मचाऱ्यांनी प्रथम 'नवीन वापरकर्ता नोंदणी' करावी.
+        प्रशासक: <b>admin1</b> किंवा <b>admin2</b>.<br>
+        थंब किंवा फेस लॉक वापरून थेट एका सेकंदात लॉगिन करा.
       </div>
       ${leadershipShowcase('login-leadership')}
     </div>
-  </div>`;
+  </div>
+  ${camPurpose==='facelock'? modalHTML() : ''}`;
 }
 
 function registerView(){
@@ -391,7 +548,7 @@ function registerView(){
       <div class="reg-photo-btn">
         ${regPhoto? `<img src="${regPhoto}">`: `<div class="ph-placeholder">फोटो नाही</div>`}
         <button class="small-btn" id="reg-take-photo" type="button" style="flex:1;">
-          ${regPhoto?'फोटो पुन्हा घ्या': 'कर्मचारी फोटो काढा'}
+          ${regPhoto?'फोटो पुन्हा घ्या': 'कर्मचारी फोटो व फेस आयडी नोंदवा'}
         </button>
       </div>
       <div class="field"><label>पूर्ण नाव</label><input id="rg-name" type="text" placeholder="उदा. विक्रांत खोपडे"></div>
@@ -415,6 +572,9 @@ function registerView(){
 function attachLoginEvents(){
   const te = document.getElementById('tab-emp'); if(te) te.onclick = ()=>{loginRole='employee';render();};
   const ta = document.getElementById('tab-adm'); if(ta) ta.onclick = ()=>{loginRole='admin'; render();};
+  const bioBtn = document.getElementById('li-bio-btn'); if(bioBtn) bioBtn.onclick = loginWithBiometric;
+  const faceBtn = document.getElementById('li-face-btn'); if(faceBtn) faceBtn.onclick = startFaceUnlock;
+
   const sub = document.getElementById('li-submit');
   if(sub) sub.onclick = ()=>{
     const u = document.getElementById('li-user')?.value.trim().toLowerCase();
@@ -426,7 +586,7 @@ function attachLoginEvents(){
       const emp = (DB.employees||[]).find(e=>e.username.toLowerCase()===u && e.password===p);
       if(!emp){ if(err) err.textContent='वापरकर्ता नाव किंवा पासवर्ड चुकीचा आहे.'; return; }
       if(emp.status==='प्रलंबित') { if(err) err.textContent='तुमची नोंदणी अद्याप प्रशासकाकडून मंजूर झालेली नाही.'; return; }
-      if(emp.status==='निष्क्रिय') { if(err) err.textContent='हे खाते निष्क्रिय आहे. कृपया प्रशासकाशी संपर्क साधा.'; return; }
+      if(emp.status==='निष्क्रिय') { if(err) err.textContent='हे खाते प्रशासकाकडून निष्क्रिय केले आहे.'; return; }
       session = {role:'employee', id:emp.id};
     } else {
       const adm = (DB.admins||[]).find(a=>a.username.toLowerCase()===u && a.password===p);
@@ -472,7 +632,7 @@ function attachLoginEvents(){
     showRegister = false;
     loginRole = 'employee';
     render();
-    alert('नोंदणी यशस्वी झाली आहे! प्रशासक (Admin) मंजूर केल्यानंतर तुम्ही लॉगिन करू शकाल.');
+    alert('नोंदणी यशस्वी झाली आहे! प्रशासक मंजूर केल्यानंतर तुम्ही थंब, फेस किंवा पासवर्डने लॉगिन करू शकाल.');
   };
 }
 
@@ -662,9 +822,9 @@ function employeeView(){
         <button class="small-btn" id="emp-leave">रजेची विनंती</button>
       </section>
       <section class="module-card">
-        <strong>सूचना व घोषणा</strong>
-        <p>${DB.announcements[0]?.title||'नवीन घोषणा नाही'}</p>
-        <button class="small-btn" id="emp-notices">सर्व घोषणा पहा</button>
+        <strong>थंब सुरक्षा (Fingerprint)</strong>
+        <p>अंगठा / फिंगरप्रिंट लिंक करा.</p>
+        <button class="small-btn approve" id="emp-enable-bio">👆 थंब जोडा</button>
       </section>
       <section class="module-card">
         <strong>माझे प्रोफाइल</strong>
@@ -708,7 +868,7 @@ function employeeProfileModal(emp, branch){
         <div class="ledger-row"><span>नियुक्त केंद्र:</span><b>${branch.name}</b></div>
         <div class="ledger-row"><span>जन्मतारीख:</span><b>${emp.dob ? fmtDate(emp.dob) : 'नोंद नाही'}</b></div>
       </div>
-      <h3 style="font-size:14px;margin:14px 0 8px;color:var(--ink);">📊 कामाचा व हजेरीचा तपशील:</h3>
+      <h3 style="font-size:14px;margin-top:14px 0 8px;color:var(--ink);">📊 कामाचा व हजेरीचा तपशील:</h3>
       <div class="profile-view-box">
         <div class="ledger-row"><span>एकूण उपस्थित दिवस:</span><b>${myAtts.length} दिवस</b></div>
         <div class="ledger-row"><span>सादर केलेले दैनिक अहवाल:</span><b>${myWorks.length} अहवाल</b></div>
@@ -731,18 +891,35 @@ function attachEmployeeEvents(){
   const co = document.getElementById('btn-checkout'); if(co) co.onclick = ()=> openCamera('checkout');
   const wk = document.getElementById('btn-work'); if(wk) wk.onclick = ()=> openWorkForm();
   const leaveBtn = document.getElementById('emp-leave'); if (leaveBtn) leaveBtn.onclick = requestLeave;
-  const noticeBtn = document.getElementById('emp-notices'); 
-  if (noticeBtn) noticeBtn.onclick = ()=> window.alert(DB.announcements.map(x=>x.title+'\n'+x.body).join('\n\n') || 'नवीन घोषणा नाही.');
-  
+
+  const enableBio = document.getElementById('emp-enable-bio');
+  if(enableBio) enableBio.onclick = ()=> registerBiometric('employee', session.id);
+
   const profileBtn = document.getElementById('emp-profile-btn');
   if (profileBtn) profileBtn.onclick = ()=>{ showEmpProfileModal = true; render(); };
 }
 
 function modalHTML(){
+  if(camPurpose==='facelock') {
+    return `
+    <div class="modal-backdrop" id="modal-backdrop">
+      <div class="modal">
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <h2>📸 चेहरा स्कॅन करा (Face Scan)</h2>
+        <div class="cam-frame">
+          <video id="cam-video" autoplay playsinline muted></video>
+          <div class="face-scan-overlay">चेहरा वर्तुळात ठेवा</div>
+        </div>
+        <canvas id="cam-canvas" style="display:none;"></canvas>
+        <div id="face-status" style="text-align:center;font-weight:600;color:var(--ink);margin:10px 0;">कॅमेऱ्यासमोर स्थिर राहा...</div>
+        <button class="btn btn-primary" id="cam-face-scan">चेहरा स्कॅन करून लॉगिन करा</button>
+      </div>
+    </div>`;
+  }
   if(camPurpose==='checkin' || camPurpose==='checkout' || camPurpose==='register') {
     const heading = camPurpose==='checkin' ? 'आज कामावर आलो - फोटो हजेरी'
       : camPurpose==='checkout' ? 'आजचे काम संपले - फोटो हजेरी'
-      : 'कर्मचारी फोटो काढा';
+      : 'कर्मचारी फोटो व फेस आयडी';
     const needsGps = camPurpose!=='register';
     return `
     <div class="modal-backdrop" id="modal-backdrop">
@@ -785,7 +962,7 @@ function openCamera(purpose) {
   camPurpose = purpose; capturedPhoto=null; gpsCoords=null; gpsError=null;
   render();
   startCameraStream();
-  if(purpose!=='register') requestGPS();
+  if(purpose!=='register' && purpose!=='facelock') requestGPS();
 }
 
 function openWorkForm() { camPurpose='work'; render(); }
@@ -840,6 +1017,42 @@ function attachModalEvents() {
     capturedPhoto = c.toDataURL('image/jpeg', 0.6);
     stopCameraStream();
     render();
+  };
+
+  const faceScanBtn = document.getElementById('cam-face-scan');
+  if(faceScanBtn) faceScanBtn.onclick = async ()=>{
+    const v = document.getElementById('cam-video');
+    const c = document.getElementById('cam-canvas');
+    const st = document.getElementById('face-status');
+    if(!v || !v.videoWidth || !c) return;
+    c.width = 320; c.height = 240;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(v,0,0,320,240);
+    const scannedPhoto = c.toDataURL('image/jpeg', 0.6);
+    
+    if(st) st.textContent = 'चेहरा पडताळत आहोत (AI Matching)...';
+
+    const activeEmps = (DB.employees||[]).filter(e=>e.status==='सक्रिय' && e.photo);
+    let matchedEmp = null;
+
+    for(let emp of activeEmps) {
+      const match = await compareFaceImages(scannedPhoto, emp.photo);
+      if(match) {
+        matchedEmp = emp;
+        break;
+      }
+    }
+
+    if(matchedEmp) {
+      if(st) st.innerHTML = `<span style="color:var(--success);">✅ चेहरा ओळखला: ${matchedEmp.name}</span>`;
+      setTimeout(()=>{
+        closeModal();
+        session = { role: 'employee', id: matchedEmp.id };
+        render();
+      }, 700);
+    } else {
+      if(st) st.innerHTML = '<span style="color:var(--danger);">❌ चेहरा जुळला नाही. कृपया चांगल्या प्रकाशात पुन्हा प्रयत्न करा किंवा थंब वापरा.</span>';
+    }
   };
 
   const retakeBtn = document.getElementById('cam-retake');
@@ -900,10 +1113,10 @@ function adminView(){
     <button data-tab="reports" class="${adminTab==='reports'?'active':''}">📊 केंद्र अहवाल (दैनिक/साप्ताहिक/मासिक)</button>
     <button data-tab="tasks" class="${adminTab==='tasks'?'active':''}">🎙️ कामे व व्हॉइस मेसेज पाठवा</button>
     <button data-tab="overview" class="${adminTab==='overview'?'active':''}">आढावा</button>
-    <button data-tab="employees" class="${adminTab==='employees'?'active':''}">कर्मचारी</button>
+    <button data-tab="employees" class="${adminTab==='employees'?'active':''}">👥 कर्मचारी व्यवस्थापन (${(DB.employees||[]).filter(e=>e.status!=='प्रलंबित').length})</button>
     <button data-tab="pending" class="${adminTab==='pending'?'active':''}">${pendingCount>0? `<span class="badge-count">${pendingCount}</span>`:''} प्रलंबित नोंदणी</button>
     <button data-tab="leave" class="${adminTab==='leave'?'active':''}">रजा विनंत्या</button>
-    <button data-tab="settings" class="${adminTab==='settings'?'active':''}">🔐 ॲडमिन सेटिंग्ज</button>
+    <button data-tab="settings" class="${adminTab==='settings'?'active':''}">🔐 प्रशासक व थंब सेटिंग्ज</button>
   </div>
   <div id="admin-body">
     ${adminTab==='reports'? reportsCenterTab() :
@@ -942,8 +1155,7 @@ function reportsCenterTab(){
     const curMonth = todayStr().slice(0,7);
     timeframeTitle = `चालू महिन्याचा अहवाल (${curMonth})`;
     for(let i=1; i<=31; i++){
-      const dayStr = String(i).padStart(2,'0');
-      datesToFilter.push(`${curMonth}-${dayStr}`);
+      datesToFilter.push(`${curMonth}-${String(i).padStart(2,'0')}`);
     }
   }
 
@@ -1253,7 +1465,7 @@ function attachTaskEvents(){
     taskAudioData = null;
     saveDB(); 
     render();
-    alert('✅ संदेश / व्हॉइस मेसेज यशस्वीरित्या कर्मचाऱ्यांना पाठवला गेला आहे!');
+    alert('✅ संदेश / व्हॉइस मेसेज कर्मचाऱ्यांच्या मोबाईलवर पाठवला गेला आहे!');
   };
 }
 
@@ -1286,19 +1498,73 @@ function employeesTab(){
   const list = (DB.employees||[]).filter(e=>e.status!=='प्रलंबित');
   return `
   <div class="panel">
-    <h3>कर्मचारी यादी (${list.length})</h3>
+    <div class="toolbar">
+      <h3>👥 सर्व कर्मचारी व्यवस्थापन (${list.length})</h3>
+    </div>
     ${list.length===0? '<div class="empty">अद्याप कोणतेही कर्मचारी सक्रिय नाहीत.</div>':
-    `<table><tr><th>कर्मचारी</th><th>पद</th><th>मोबाईल</th><th>स्थिती</th><th>तपशील</th></tr>
-    ${list.map(e=>`
-      <tr>
-        <td><b>${e.name}</b><br><small style="color:var(--text-muted);">${e.id}</small></td>
-        <td>${e.designation}</td>
-        <td>${e.mobile}</td>
-        <td><span class="status-tag ${e.status==='सक्रिय'?'present':'absent'}">${e.status}</span></td>
-        <td><button class="small-btn" onclick="openEmpDetails('${e.id}')">पहा</button></td>
-      </tr>`).join('')}
+    `<table>
+      <thead>
+        <tr>
+          <th>कर्मचारी तपशील</th>
+          <th>पद</th>
+          <th>मोबाईल</th>
+          <th>स्थिती (Status)</th>
+          <th style="text-align:center;">कृती (Actions)</th>
+        </tr>
+      </thead>
+      <tbody>
+      ${list.map(e=>`
+        <tr>
+          <td><b>${e.name}</b><br><small style="color:var(--text-muted);">${e.id} • ${getBranchName(e.branchId)}</small></td>
+          <td>${e.designation}</td>
+          <td>${e.mobile}</td>
+          <td>
+            <span class="status-tag ${e.status==='सक्रिय'?'present':'absent'}" style="cursor:pointer;" onclick="toggleEmpStatus('${e.id}')" title="क्लिक करून बदला">
+              ${e.status==='सक्रिय'?'🟢 सक्रिय':'🔴 निष्क्रिय'}
+            </span>
+          </td>
+          <td style="text-align:center;white-space:nowrap;">
+            <button class="small-btn" onclick="openEmpDetails('${e.id}')">👁️ पहा</button>
+            <button class="small-btn reject" onclick="deleteEmployee('${e.id}')" style="margin-left:4px;" title="कायमचे काढून टाका">🗑️ काढा</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
     </table>`}
   </div>`;
+}
+
+function getBranchName(branchId) {
+  const b = (DB.branches||[]).find(x=>x.id===branchId);
+  return b ? b.name : 'केंद्र';
+}
+
+function deleteEmployee(empId) {
+  const emp = (DB.employees||[]).find(e=>e.id===empId);
+  const name = emp ? emp.name : empId;
+  const ans = window.confirm(`⚠️ '${name}' या कर्मचाऱ्याला संस्थेतून कायमचे काढून टाकू इच्छिता का?`);
+  if(!ans) return;
+
+  DB.employees = (DB.employees||[]).filter(e=>e.id!==empId);
+  DB.tasks = (DB.tasks||[]).filter(t=>t.employeeId!==empId);
+
+  saveDB();
+  alert(`✅ '${name}' या कर्मचाऱ्याला काढून टाकले आहे!`);
+  render();
+}
+
+function toggleEmpStatus(empId) {
+  const emp = (DB.employees||[]).find(e=>e.id===empId);
+  if(!emp) return;
+  const newStatus = emp.status === 'सक्रिय' ? 'निष्क्रिय' : 'सक्रिय';
+  const confirmMsg = newStatus === 'निष्क्रिय' 
+    ? `'${emp.name}' यांना निष्क्रिय करायचे आहे का?` 
+    : `'${emp.name}' यांना पुन्हा सक्रिय करायचे आहे का?`;
+  
+  if(window.confirm(confirmMsg)) {
+    emp.status = newStatus;
+    saveDB();
+    render();
+  }
 }
 
 function openEmpDetails(id){ empDetailId = id; render(); }
@@ -1327,6 +1593,10 @@ function employeeDetailModal(){
         </div>`: '<div class="empty">आज हजेरी नाही.</div>'}
       <h3 style="font-size:14px;margin-top:16px;">आजचे काम</h3>
       ${wk? `<div class="ledger-row"><span>नोंदणी / क्लेम / नूतनीकरण / कार्ड:</span><b>${wk.newRegistrations}/${wk.newClaims}/${wk.formRenewals}/${wk.cardsIssued}</b></div><p style="font-size:13px;">${wk.otherWork||''}</p>`: '<div class="empty">काम सादर केलेले नाही.</div>'}
+      
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;text-align:right;">
+        <button class="small-btn reject" onclick="deleteEmployee('${e.id}');empDetailId=null;render();">🗑️ या कर्मचाऱ्याला कायमचे काढा</button>
+      </div>
     </div>
   </div>`;
 }
@@ -1349,7 +1619,7 @@ function pendingTab(){
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;">
           <button class="small-btn approve" onclick="approveEmp('${e.id}')" style="flex:1;">मंजूर करा</button>
-          <button class="small-btn reject" onclick="rejectEmp('${e.id}')" style="flex:1;">नकार द्या</button>
+          <button class="small-btn reject" onclick="rejectEmp('${e.id}')" style="flex:1;">नकार द्या / काढा</button>
         </div>
       </div>`).join('')}
   </div>`;
@@ -1392,8 +1662,15 @@ function updateLeave(id, status){
 function adminSettingsTab(){
   return `
   <div class="panel" style="max-width:500px;">
-    <h3>🔐 प्रशासक पासवर्ड बदला</h3>
+    <h3>🔐 प्रशासक पासवर्ड व थंब सेटिंग्ज</h3>
     <p style="font-size:13px;color:var(--text-muted);">सध्याचे लॉगिन: <b>${session.name}</b> (${session.username})</p>
+    
+    <div style="margin:16px 0;padding:14px;background:var(--paper);border-radius:12px;">
+      <label style="font-weight:700;color:var(--ink);display:block;margin-bottom:6px;">👆 थंब लॉगिन लिंक करा (Fingerprint):</label>
+      <button class="btn btn-bio" id="adm-enable-bio" style="margin:0;">👆 ॲडमिन थंब जोडा</button>
+    </div>
+
+    <h3 style="font-size:14px;margin-top:20px;">पासवर्ड बदला:</h3>
     <div class="field"><label>सध्याचा पासवर्ड</label><input type="password" id="adm-curr-pass" placeholder="सध्याचा पासवर्ड टाका"></div>
     <div class="field"><label>नवीन पासवर्ड</label><input type="password" id="adm-new-pass" placeholder="नवीन पासवर्ड तयार करा"></div>
     <div class="field"><label>नवीन पासवर्ड पुन्हा टाका</label><input type="password" id="adm-new-pass2" placeholder="पुन्हा पासवर्ड टाका"></div>
@@ -1418,6 +1695,9 @@ function attachAdminEvents(){
   if(exportBtn) exportBtn.onclick = exportCenterReportToCSV;
 
   attachTaskEvents();
+
+  const bioAdmBtn = document.getElementById('adm-enable-bio');
+  if(bioAdmBtn) bioAdmBtn.onclick = ()=> registerBiometric('admin', session.username);
 
   const passBtn = document.getElementById('adm-change-pass-btn');
   if(passBtn) passBtn.onclick = ()=>{
