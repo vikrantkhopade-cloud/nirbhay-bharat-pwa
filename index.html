@@ -245,6 +245,7 @@ const dbRef = firebase.database().ref('nbss_live_data');
 const ORGANIZATION_NAME = 'निर्भय भारत सामाजिक संस्था';
 let DB = null;
 let lastKnownTaskCount = null;
+let lastKnownPendingEmpCount = null;
 
 function todayStr() { return new Date().toISOString().slice(0,10); }
 function fmtTime(d) { return d.toLocaleTimeString('mr-IN', {hour:'2-digit', minute:'2-digit'}); }
@@ -257,7 +258,8 @@ function hoursBetween(inISO, outISO) {
 }
 
 function nextEmpId(){
-  const nums = (DB.employees||[]).map(e=> parseInt((e.id||'').replace(/\D/g, ''))||0);
+  const emps = DB && DB.employees ? (Array.isArray(DB.employees) ? DB.employees : Object.values(DB.employees)) : [];
+  const nums = emps.map(e=> parseInt((e.id||'').replace(/\D/g, ''))||0);
   const n = (nums.length? Math.max(...nums):0)+1;
   return 'NBSS' + String(n).padStart(3,'0');
 }
@@ -270,23 +272,48 @@ function seedData(){
       {id: 'br_velha', name: 'वेल्हा केंद्र', address: 'वेल्हा तालुका', status: 'सक्रिय'},
       {id: 'br_pune', name: 'पुणे शहर केंद्र', address: 'पुणे शहर', status: 'सक्रिय'}
     ],
-    employees: [],
+    employees: {},
     admins: [
       {username:'admin1', password:'admin123', name: 'अक्षय कामठे'},
       {username:'admin2', password:'admin123', name: 'ईश्वर कामठे'}
     ],
     attendance: {}, 
     work: {}, 
-    tasks: [], 
-    leaves: [], 
+    tasks: {}, 
+    leaves: {}, 
     announcements:[{id:'ann_1', title: 'स्वागत संदेश', body: 'निर्भय भारत सामाजिक संस्थेत आपले सहर्ष स्वागत आहे. आजची हजेरी आणि कामाचा अहवाल वेळेत सादर करा.', date: todayStr()}]
   };
 }
 
 // -------------------------------------------------------------
-// 🔔 विशेष संस्था रिंगटोन आणि व्हॉइस अलर्ट
+// 🔔 स्मार्ट ऑडिओ आणि नोटिफिकेशन सिस्टीम
 // -------------------------------------------------------------
-function playNirbhayVoiceAlert(messageText) {
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+    Notification.requestPermission();
+  }
+}
+
+function showSystemNotification(title, bodyText) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.showNotification(title, {
+          body: bodyText,
+          icon: './icons/icon-192.png',
+          badge: './icons/icon-192.png',
+          vibrate: [200, 100, 200]
+        });
+      }).catch(() => {
+        new Notification(title, { body: bodyText, icon: './icons/icon-192.png' });
+      });
+    } catch (e) {
+      new Notification(title, { body: bodyText, icon: './icons/icon-192.png' });
+    }
+  }
+}
+
+function playVoiceAlert(spokenText) {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = audioCtx.createOscillator();
@@ -302,13 +329,11 @@ function playNirbhayVoiceAlert(messageText) {
     osc.stop(audioCtx.currentTime + 0.5);
   } catch(e) {}
 
-  if(navigator.vibrate) {
-    navigator.vibrate([200, 100, 300]);
-  }
+  if(navigator.vibrate) navigator.vibrate([200, 100, 300]);
 
   if('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance("निर्भय भारत सामाजिक संस्था. प्रशासकाकडून नवीन सूचना व काम आले आहे.");
+    const utterance = new SpeechSynthesisUtterance(spokenText);
     utterance.lang = 'mr-IN';
     utterance.rate = 0.95;
     utterance.pitch = 1.05;
@@ -319,7 +344,25 @@ function playNirbhayVoiceAlert(messageText) {
 }
 
 // -------------------------------------------------------------
-// 🔐 १. बायोमेट्रिक / थंब (Fingerprint Login - WebAuthn)
+// ⏰ रोज सकाळी हजेरीचे मॉर्निंग नोटिफिकेशन (Morning Attendance Alert)
+// -------------------------------------------------------------
+function checkMorningNotification() {
+  const currentHour = new Date().getHours();
+  const lastMorningDate = localStorage.getItem('nbss_last_morning_alert');
+  const today = todayStr();
+
+  // सकाळी ९ ते ११ च्या दरम्यान एकदाच अलर्ट
+  if (currentHour >= 9 && currentHour <= 12 && lastMorningDate !== today) {
+    localStorage.setItem('nbss_last_morning_alert', today);
+    showSystemNotification("🌅 शुभ सकाळ - निर्भय भारत संस्था", "कृपया आज कामावर आल्यावर आपली फोटो व GPS हजेरी वेळेत नोंदवा.");
+    if(session && session.role === 'employee') {
+      playVoiceAlert("शुभ सकाळ. निर्भय भारत संस्थेमध्ये आपली आजची हजेरी वेळेत नोंदवा.");
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// 🔐 १. बायोमेट्रिक / थंब (Thumb Login - WebAuthn)
 // -------------------------------------------------------------
 async function registerBiometric(userType, identifier) {
   if (!window.PublicKeyCredential) {
@@ -338,26 +381,35 @@ async function registerBiometric(userType, identifier) {
           name: identifier,
           displayName: identifier
         },
-        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+        pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
         authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
         timeout: 60000
       }
     });
     if (credential) {
-      localStorage.setItem('nbss_bio_auth', JSON.stringify({ type: userType, id: identifier }));
+      localStorage.setItem('nbss_bio_auth', JSON.stringify({ type: userType, id: identifier, linkedAt: new Date().toISOString() }));
       alert("✅ फिंगरप्रिंट (Thumb) यशस्वीरित्या लिंक झाले आहे!");
+      render();
       return true;
     }
   } catch (err) {
-    alert("फिंगरप्रिंट नोंदणी रद्द केली किंवा त्रुटी आली.");
+    alert("फिंगरप्रिंट नोंदणी रद्द झाली किंवा त्रुटी आली.");
     return false;
+  }
+}
+
+function removeBiometric() {
+  if(confirm("तुम्ही या मोबाईलवरील नोंदवलेला थंब काढू इच्छिता का?")) {
+    localStorage.removeItem('nbss_bio_auth');
+    alert("✅ थंब यशस्वीरित्या काढला आहे!");
+    render();
   }
 }
 
 async function loginWithBiometric() {
   const bioData = localStorage.getItem('nbss_bio_auth');
   if(!bioData) {
-    alert("या फोनवर अद्याप फिंगरप्रिंट रजिस्टर केलेले नाही. कृपया प्रथम आयडी-पासवर्डने लॉगिन करून '👆 फिंगरप्रिंट जोडा' बटण दाबा.");
+    alert("⚠️ या मोबाईलवर अद्याप कोणताही थंब लिंक केलेला नाही.\n\nकृपया प्रथम युझरनेम आणि पासवर्डने लॉगिन करा आणि आत जाऊन '👆 थंब जोडा' वर क्लिक करा.");
     return;
   }
   const { type, id } = JSON.parse(bioData);
@@ -372,22 +424,21 @@ async function loginWithBiometric() {
         const adm = (DB.admins||[]).find(a => a.username === id);
         if(adm) { session = { role: 'admin', username: adm.username, name: adm.name }; render(); }
       } else {
-        const emp = (DB.employees||[]).find(e => e.id === id || e.username === id);
+        const empList = getEmployeesList();
+        const emp = empList.find(e => e.id === id || e.username === id);
         if(emp && emp.status === 'सक्रिय') { session = { role: 'employee', id: emp.id }; render(); }
-        else { alert("हे कर्मचारी खाते सक्रिय नाही किंवा काढून टाकले आहे."); }
+        else { alert("हे कर्मचारी खाते सक्रिय नाही किंवा अद्याप मंजूर झालेले नाही."); }
       }
     }
   } catch(e) {
-    alert("फिंगरप्रिंट पडताळणी अयशस्वी झाली.");
+    alert("फिंगरप्रिंट पडताळणी रद्द केली किंवा अयशस्वी झाली.");
   }
 }
 
 // -------------------------------------------------------------
-// 📷 २. AI Face Lock (Face Scan Matching)
+// 📷 २. AI Face Lock (Face Scan)
 // -------------------------------------------------------------
-function startFaceUnlock() {
-  openCamera('facelock');
-}
+function startFaceUnlock() { openCamera('facelock'); }
 
 function compareFaceImages(capturedDataUrl, targetDataUrl) {
   return new Promise((resolve) => {
@@ -421,8 +472,24 @@ function compareFaceImages(capturedDataUrl, targetDataUrl) {
   });
 }
 
+// हेल्पर फंक्शन: Employees ऑब्जेक्टचे Array मध्ये रूपांतर
+function getEmployeesList() {
+  if (!DB || !DB.employees) return [];
+  return Array.isArray(DB.employees) ? DB.employees : Object.values(DB.employees);
+}
+
+function getTasksList() {
+  if (!DB || !DB.tasks) return [];
+  return Array.isArray(DB.tasks) ? DB.tasks : Object.values(DB.tasks);
+}
+
+function getLeavesList() {
+  if (!DB || !DB.leaves) return [];
+  return Array.isArray(DB.leaves) ? DB.leaves : Object.values(DB.leaves);
+}
+
 // -------------------------------------------------------------
-// रिअल-टाईम क्लाऊड डेटाबेस सिंक
+// रिअल-टाईम क्लाऊड डेटाबेस सिंक व ऑटो-नोटिफिकेशन हँडलर
 // -------------------------------------------------------------
 function initFirebaseSync(){
   dbRef.on('value', (snapshot) => {
@@ -436,24 +503,40 @@ function initFirebaseSync(){
     
     if(!DB.admins) DB.admins = seedData().admins;
     if(!DB.branches) DB.branches = seedData().branches;
-    if(!DB.employees) DB.employees = [];
+    if(!DB.employees) DB.employees = {};
     if(!DB.attendance) DB.attendance = {};
     if(!DB.work) DB.work = {};
-    if(!DB.tasks) DB.tasks = [];
-    if(!DB.leaves) DB.leaves = [];
+    if(!DB.tasks) DB.tasks = {};
+    if(!DB.leaves) DB.leaves = {};
     if(!DB.announcements) DB.announcements = seedData().announcements;
 
-    const currentTaskCount = (DB.tasks||[]).length;
-    if(lastKnownTaskCount !== null && currentTaskCount > lastKnownTaskCount) {
-      if(session && session.role === 'employee') {
-        const latestTask = DB.tasks[DB.tasks.length - 1];
-        if(latestTask.employeeId === 'all' || latestTask.employeeId === session.id) {
-          playNirbhayVoiceAlert(latestTask.title);
+    const allEmps = getEmployeesList();
+    const pendingEmps = allEmps.filter(e => e.status === 'प्रलंबित');
+    const allTasks = getTasksList();
+
+    // 🔔 १. ॲडमिनसाठी नोटिफिकेशन: नवीन कर्मचाऱ्याने नोंदणी केल्यास
+    if (lastKnownPendingEmpCount !== null && pendingEmps.length > lastKnownPendingEmpCount) {
+      if (session && session.role === 'admin') {
+        const latestPending = pendingEmps[pendingEmps.length - 1];
+        showSystemNotification("👤 नवीन कर्मचारी नोंदणी", `${latestPending.name} यांनी नवीन नोंदणी केली आहे. मंजुरीसाठी तपासा.`);
+        playVoiceAlert(`लक्ष द्या. ${latestPending.name} यांनी नवीन नोंदणी केली आहे. कृपया ॲडमिन पॅनलमध्ये मंजुरी द्या.`);
+      }
+    }
+    lastKnownPendingEmpCount = pendingEmps.length;
+
+    // 🔔 २. कर्मचाऱ्यासाठी नोटिफिकेशन: ॲडमिनने नवीन काम किंवा ऑडिओ दिल्यास
+    if (lastKnownTaskCount !== null && allTasks.length > lastKnownTaskCount) {
+      if (session && session.role === 'employee') {
+        const latestTask = allTasks[allTasks.length - 1];
+        if (latestTask.employeeId === 'all' || latestTask.employeeId === session.id) {
+          showSystemNotification("📋 प्रशासकाकडून नवीन काम", latestTask.title || "नवीन काम व ऑडिओ संदेश आला आहे.");
+          playVoiceAlert("निर्भय भारत सामाजिक संस्था. प्रशासकाकडून नवीन काम व सूचना आली आहे.");
         }
       }
     }
-    lastKnownTaskCount = currentTaskCount;
-    
+    lastKnownTaskCount = allTasks.length;
+
+    checkMorningNotification();
     render();
   });
 }
@@ -469,7 +552,7 @@ let loginRole = 'employee';
 let showRegister = false;
 let showEmpProfileModal = false;
 let regPhoto = null;
-let adminTab = 'reports'; 
+let adminTab = 'pending'; // नवीन नोंदणी लगेच दिसावी म्हणून डीफॉल्ट 'pending'
 let reportTimeframe = 'daily'; 
 let reportBranchFilter = 'br_bhor';
 let empDetailId = null;
@@ -524,14 +607,13 @@ function loginView(){
       <div class="login-error" id="li-err"></div>
       <button class="btn btn-primary" id="li-submit">लॉगिन</button>
       
-      <!-- थंब आणि फेस लॉक दोन्ही बटणे -->
       <button class="btn btn-bio" id="li-bio-btn">👆 थंबने लॉगिन करा (Fingerprint)</button>
       <button class="btn btn-face" id="li-face-btn">📸 फेस स्कॅनने लॉगिन करा (Face Scan)</button>
       
       ${loginRole==='employee'?'<button class="link-btn" id="go-register">नवीन वापरकर्ता नोंदणी</button>' : ''}
       <div class="demo-hint" style="margin-top:16px;font-size:12px;color:var(--text-muted);background:var(--paper);border-radius:9px;padding:10px;line-height:1.6;">
         प्रशासक: <b>admin1</b> किंवा <b>admin2</b>.<br>
-        थंब किंवा फेस लॉक वापरून थेट एका सेकंदात लॉगिन करा.
+        नवीन कर्मचाऱ्यांनी प्रथम नोंदणी करावी; प्रशासकाने मंजूर केल्यावर लॉगिन होईल.
       </div>
       ${leadershipShowcase('login-leadership')}
     </div>
@@ -544,7 +626,7 @@ function registerView(){
   <div class="login-wrap">
     <div class="login-card" style="max-width:440px;">
       <h1 style="margin-top:0;">नवीन वापरकर्ता नोंदणी</h1>
-      <p class="tag">नोंदणीनंतर तुमचे खाते प्रशासकाच्या मंजुरीसाठी जाईल</p>
+      <p class="tag">नोंदणीनंतर तुमचे खाते प्रशासकाच्या मंजुरीसाठी थेट क्लाऊडवर जाईल</p>
       <div class="reg-photo-btn">
         ${regPhoto? `<img src="${regPhoto}">`: `<div class="ph-placeholder">फोटो नाही</div>`}
         <button class="small-btn" id="reg-take-photo" type="button" style="flex:1;">
@@ -570,6 +652,7 @@ function registerView(){
 }
 
 function attachLoginEvents(){
+  requestNotificationPermission();
   const te = document.getElementById('tab-emp'); if(te) te.onclick = ()=>{loginRole='employee';render();};
   const ta = document.getElementById('tab-adm'); if(ta) ta.onclick = ()=>{loginRole='admin'; render();};
   const bioBtn = document.getElementById('li-bio-btn'); if(bioBtn) bioBtn.onclick = loginWithBiometric;
@@ -583,8 +666,9 @@ function attachLoginEvents(){
     if(!u || !p) { if(err) err.textContent='कृपया युझरनेम आणि पासवर्ड टाका.'; return; }
 
     if (loginRole==='employee') {
-      const emp = (DB.employees||[]).find(e=>e.username.toLowerCase()===u && e.password===p);
-      if(!emp){ if(err) err.textContent='वापरकर्ता नाव किंवा पासवर्ड चुकीचा आहे.'; return; }
+      const empList = getEmployeesList();
+      const emp = empList.find(e=> (e.username && e.username.toLowerCase()===u) || (e.id && e.id.toLowerCase()===u));
+      if(!emp || emp.password !== p){ if(err) err.textContent='वापरकर्ता नाव किंवा पासवर्ड चुकीचा आहे.'; return; }
       if(emp.status==='प्रलंबित') { if(err) err.textContent='तुमची नोंदणी अद्याप प्रशासकाकडून मंजूर झालेली नाही.'; return; }
       if(emp.status==='निष्क्रिय') { if(err) err.textContent='हे खाते प्रशासकाकडून निष्क्रिय केले आहे.'; return; }
       session = {role:'employee', id:emp.id};
@@ -618,21 +702,28 @@ function attachLoginEvents(){
     if(!name || !mobile || !desig || !username || !pass) { if(err) err.textContent='कृपया सर्व आवश्यक माहिती भरा.'; return; }
     if(!/^\d{10}$/.test(mobile)){ if(err) err.textContent='कृपया योग्य 10 अंकी मोबाईल क्रमांक टाका.'; return; }
     if (pass !== pass2){ if(err) err.textContent='दोन्ही पासवर्ड जुळत नाहीत.'; return; }
-    if((DB.employees||[]).find(e=>e.username===username)) { if(err) err.textContent='हे वापरकर्ता नाव आधीच अस्तित्वात आहे.'; return; }
+    
+    const empList = getEmployeesList();
+    if(empList.find(e=>e.username && e.username.toLowerCase()===username)) { if(err) err.textContent='हे वापरकर्ता नाव आधीच अस्तित्वात आहे.'; return; }
     if(!regPhoto) { if(err) err.textContent='कृपया कर्मचारी फोटो घ्या.'; return; }
 
+    const newId = nextEmpId();
     const newEmp = {
-      id: nextEmpId(), name, mobile, dob, branchId, designation:desig,
-      username, password:pass, status: 'प्रलंबित', photo:regPhoto
+      id: newId, name, mobile, dob, branchId, designation:desig,
+      username, password:pass, status: 'प्रलंबित', photo:regPhoto,
+      registeredAt: new Date().toISOString()
     };
-    if(!DB.employees) DB.employees = [];
-    DB.employees.push(newEmp);
+
+    // Firebase वर थेट ऑब्जेक्ट की म्हणून सेव्ह करणे (Realtime Sync Fix)
+    if(!DB.employees) DB.employees = {};
+    DB.employees[newId] = newEmp;
+    
     saveDB();
     regPhoto = null;
     showRegister = false;
     loginRole = 'employee';
     render();
-    alert('नोंदणी यशस्वी झाली आहे! प्रशासक मंजूर केल्यानंतर तुम्ही थंब, फेस किंवा पासवर्डने लॉगिन करू शकाल.');
+    alert(`✅ नोंदणी यशस्वी झाली आहे! (तुमचा आयडी: ${newId})\n\nप्रशासकाने (Admin) मंजूर केल्यानंतर तुम्ही लॉगिन करू शकाल.`);
   };
 }
 
@@ -717,23 +808,24 @@ function requestLeave(){
 
   const emp = getEmp();
   const branch = emp && (DB.branches||[]).find(b=>b.id===emp.branchId);
-  if(!DB.leaves) DB.leaves = [];
-  DB.leaves.push({
-    id:'lv_'+Date.now(), 
-    employeeId:session.id, 
-    applicantName:emp?.name||'कर्मचारी', 
-    applicantCenter:branch?.name||'केंद्र',
+  if(!DB.leaves) DB.leaves = {};
+  const leaveId = 'lv_' + Date.now();
+  DB.leaves[leaveId] = {
+    id: leaveId, 
+    employeeId: session.id, 
+    applicantName: emp?.name||'कर्मचारी', 
+    applicantCenter: branch?.name||'केंद्र',
     submittedAt: new Date().toISOString(), 
     leaveDate: `${from} ते ${to}`, 
     reason, 
     status: 'प्रलंबित'
-  });
+  };
   saveDB();
   alert('रजेचा अर्ज प्रशासकाकडे सादर करण्यात आला आहे.');
   render();
 }
 
-function getEmp() { return (DB.employees||[]).find(e=>e.id===session.id); }
+function getEmp() { return getEmployeesList().find(e=>e.id===session.id); }
 function attKey(empId, date) { return empId+'_'+date; }
 function todayAtt() { return (DB.attendance||{})[attKey(session.id, todayStr())]; }
 function todayWork() { return (DB.work||{})[attKey(session.id, todayStr())]; }
@@ -750,7 +842,9 @@ function employeeView(){
   const hrs = hoursBetween(att&&att.checkIn&&att.checkIn.time, att&&att.checkOut&&att.checkOut.time);
   const myDates = Object.keys(DB.attendance||{}).filter(k=>DB.attendance[k].employeeId===session.id).map(k=>DB.attendance[k].date).sort().reverse();
   
-  const myTasks = (DB.tasks||[]).filter(x => x.employeeId === emp.id || x.employeeId === 'all');
+  const allTasks = getTasksList();
+  const myTasks = allTasks.filter(x => x.employeeId === emp.id || x.employeeId === 'all');
+  const isBioLinked = !!localStorage.getItem('nbss_bio_auth');
 
   return `
   ${topbar(ORGANIZATION_NAME, 'पुणे जिल्हा • '+branch.name)}
@@ -823,8 +917,10 @@ function employeeView(){
       </section>
       <section class="module-card">
         <strong>थंब सुरक्षा (Fingerprint)</strong>
-        <p>अंगठा / फिंगरप्रिंट लिंक करा.</p>
-        <button class="small-btn approve" id="emp-enable-bio">👆 थंब जोडा</button>
+        <p>${isBioLinked ? 'थंब सध्या लिंक आहे.' : 'थंब लिंक केलेला नाही.'}</p>
+        ${isBioLinked ? 
+          `<button class="small-btn reject" id="emp-remove-bio">🗑️ थंब काढा / बदला</button>` : 
+          `<button class="small-btn approve" id="emp-enable-bio">👆 थंब जोडा</button>`}
       </section>
       <section class="module-card">
         <strong>माझे प्रोफाइल</strong>
@@ -842,9 +938,8 @@ function employeeView(){
 }
 
 function toggleTaskStatus(id){
-  const t = (DB.tasks||[]).find(x=>x.id===id);
-  if(t){
-    t.status = t.status === 'पूर्ण' ? 'प्रलंबित' : 'पूर्ण';
+  if(DB.tasks && DB.tasks[id]) {
+    DB.tasks[id].status = DB.tasks[id].status === 'पूर्ण' ? 'प्रलंबित' : 'पूर्ण';
     saveDB(); render();
   }
 }
@@ -894,6 +989,9 @@ function attachEmployeeEvents(){
 
   const enableBio = document.getElementById('emp-enable-bio');
   if(enableBio) enableBio.onclick = ()=> registerBiometric('employee', session.id);
+
+  const removeBio = document.getElementById('emp-remove-bio');
+  if(removeBio) removeBio.onclick = removeBiometric;
 
   const profileBtn = document.getElementById('emp-profile-btn');
   if (profileBtn) profileBtn.onclick = ()=>{ showEmpProfileModal = true; render(); };
@@ -1032,7 +1130,7 @@ function attachModalEvents() {
     
     if(st) st.textContent = 'चेहरा पडताळत आहोत (AI Matching)...';
 
-    const activeEmps = (DB.employees||[]).filter(e=>e.status==='सक्रिय' && e.photo);
+    const activeEmps = getEmployeesList().filter(e=>e.status==='सक्रिय' && e.photo);
     let matchedEmp = null;
 
     for(let emp of activeEmps) {
@@ -1105,25 +1203,30 @@ function closeModal(){
 }
 
 function adminView(){
-  const pendingCount = (DB.employees||[]).filter(e=>e.status==='प्रलंबित').length;
+  const allEmps = getEmployeesList();
+  const pendingCount = allEmps.filter(e=>e.status==='प्रलंबित').length;
+  const activeCount = allEmps.filter(e=>e.status!=='प्रलंबित').length;
+
   return `
   ${topbar(ORGANIZATION_NAME, 'पुणे जिल्हा प्रशासक डॅशबोर्ड')}
   ${heroWelcome('स्वागत आहे, '+session.name)}
   <div class="tabbar">
+    <button data-tab="pending" class="${adminTab==='pending'?'active':''}">
+      ${pendingCount>0? `<span class="badge-count">${pendingCount}</span>`:''} ⏳ नवीन नोंदणी अर्ज (${pendingCount})
+    </button>
     <button data-tab="reports" class="${adminTab==='reports'?'active':''}">📊 केंद्र अहवाल (दैनिक/साप्ताहिक/मासिक)</button>
     <button data-tab="tasks" class="${adminTab==='tasks'?'active':''}">🎙️ कामे व व्हॉइस मेसेज पाठवा</button>
     <button data-tab="overview" class="${adminTab==='overview'?'active':''}">आढावा</button>
-    <button data-tab="employees" class="${adminTab==='employees'?'active':''}">👥 कर्मचारी व्यवस्थापन (${(DB.employees||[]).filter(e=>e.status!=='प्रलंबित').length})</button>
-    <button data-tab="pending" class="${adminTab==='pending'?'active':''}">${pendingCount>0? `<span class="badge-count">${pendingCount}</span>`:''} प्रलंबित नोंदणी</button>
+    <button data-tab="employees" class="${adminTab==='employees'?'active':''}">👥 कर्मचारी व्यवस्थापन (${activeCount})</button>
     <button data-tab="leave" class="${adminTab==='leave'?'active':''}">रजा विनंत्या</button>
     <button data-tab="settings" class="${adminTab==='settings'?'active':''}">🔐 प्रशासक व थंब सेटिंग्ज</button>
   </div>
   <div id="admin-body">
-    ${adminTab==='reports'? reportsCenterTab() :
+    ${adminTab==='pending'? pendingTab() :
+      adminTab==='reports'? reportsCenterTab() :
       adminTab==='tasks'? tasksTab() :
       adminTab==='overview'? overviewTab() :
       adminTab==='employees'? employeesTab() :
-      adminTab==='pending'? pendingTab() :
       adminTab==='leave'? leaveRequestsTab() :
       adminSettingsTab()}
   </div>
@@ -1135,7 +1238,7 @@ function adminView(){
 function reportsCenterTab(){
   const branchList = DB.branches || [];
   const selectedBranchObj = branchList.find(b=>b.id===reportBranchFilter) || branchList[0];
-  const branchEmployees = (DB.employees||[]).filter(e => e.status==='सक्रिय' && (reportBranchFilter==='all' || e.branchId===reportBranchFilter));
+  const branchEmployees = getEmployeesList().filter(e => e.status==='सक्रिय' && (reportBranchFilter==='all' || e.branchId===reportBranchFilter));
   
   const today = new Date();
   let datesToFilter = [];
@@ -1268,7 +1371,7 @@ function exportCenterReportToCSV(){
   const branchList = DB.branches || [];
   const selectedBranchObj = branchList.find(b=>b.id===reportBranchFilter);
   const branchName = reportBranchFilter==='all'?'सर्व केंद्रे':(selectedBranchObj?.name || 'केंद्र');
-  const branchEmployees = (DB.employees||[]).filter(e => e.status==='सक्रिय' && (reportBranchFilter==='all' || e.branchId===reportBranchFilter));
+  const branchEmployees = getEmployeesList().filter(e => e.status==='सक्रिय' && (reportBranchFilter==='all' || e.branchId===reportBranchFilter));
   
   const today = new Date();
   let datesToFilter = [];
@@ -1332,12 +1435,13 @@ function exportCenterReportToCSV(){
 }
 
 function tasksTab(){
-  const active = (DB.employees||[]).filter(e=>e.status==='सक्रिय');
+  const active = getEmployeesList().filter(e=>e.status==='सक्रिय');
+  const allTasks = getTasksList();
   return `
   <div class="panel">
     <div class="toolbar">
       <h3>🎙️ कर्मचाऱ्यांसाठी सूचना / काम व व्हॉइस मेसेज</h3>
-      <span class="pill pill-wait">${(DB.tasks||[]).length} मेसेज</span>
+      <span class="pill pill-wait">${allTasks.length} मेसेज</span>
     </div>
 
     <div class="task-form">
@@ -1371,9 +1475,9 @@ function tasksTab(){
     <button class="btn btn-primary" id="save-task-btn" style="width:auto;margin-top:14px;">📤 मेसेज व काम पाठवा</button>
 
     <h3 style="margin-top:28px;">पाठवलेले संदेश व व्हॉइस नोट्स</h3>
-    ${(DB.tasks||[]).length===0? '<div class="empty">कोणताही संदेश पाठवलेला नाही.</div>':
-    DB.tasks.slice().reverse().map(t=>{
-      const empName = t.employeeId==='all' ? '📢 सर्व कर्मचारी' : ((DB.employees||[]).find(e=>e.id===t.employeeId)?.name || 'कर्मचारी');
+    ${allTasks.length===0? '<div class="empty">कोणताही संदेश पाठवलेला नाही.</div>':
+    allTasks.slice().reverse().map(t=>{
+      const empName = t.employeeId==='all' ? '📢 सर्व कर्मचारी' : (getEmployeesList().find(e=>e.id===t.employeeId)?.name || 'कर्मचारी');
       return `
       <div class="notice">
         <b>${t.title || 'महत्त्वाची सूचना'}</b>
@@ -1452,26 +1556,28 @@ function attachTaskEvents(){
       if(errEl) errEl.textContent = 'कृपया लेखी संदेश लिहा किंवा व्हॉइस मेसेज रेकॉर्ड करा.';
       return; 
     }
-    if(!DB.tasks) DB.tasks = [];
-    DB.tasks.push({
-      id:'task_'+Date.now(), 
+    if(!DB.tasks) DB.tasks = {};
+    const taskId = 'task_' + Date.now();
+    DB.tasks[taskId] = {
+      id: taskId, 
       title: desc || 'प्रशासकाचा व्हॉइस मेसेज', 
       employeeId: emp, 
       due: due || null, 
       audioData: taskAudioData, 
       status:'प्रलंबित',
       createdAt: todayStr()
-    });
+    };
     taskAudioData = null;
     saveDB(); 
     render();
-    alert('✅ संदेश / व्हॉइस मेसेज कर्मचाऱ्यांच्या मोबाईलवर पाठवला गेला आहे!');
+    alert('✅ संदेश / काम कर्मचाऱ्यांच्या मोबाईलवर पाठवले गेले आहे!');
   };
 }
 
 function overviewTab(){
   const ds = todayStr();
-  const active = (DB.employees||[]).filter(e=>e.status==='सक्रिय');
+  const allEmps = getEmployeesList();
+  const active = allEmps.filter(e=>e.status==='सक्रिय');
   const presentToday = active.filter(e=>(DB.attendance||{})[attKey(e.id,ds)]?.checkIn);
   const absent = active.length - presentToday.length;
 
@@ -1480,7 +1586,7 @@ function overviewTab(){
     <div class="metric"><div class="num">${active.length}</div><div class="lbl">एकूण सक्रिय कर्मचारी</div></div>
     <div class="metric"><div class="num">${presentToday.length}</div><div class="lbl">आज उपस्थित</div></div>
     <div class="metric warn"><div class="num">${absent}</div><div class="lbl">आज अनुपस्थित</div></div>
-    <div class="metric"><div class="num">${(DB.tasks||[]).length}</div><div class="lbl">एकूण कामे</div></div>
+    <div class="metric"><div class="num">${getTasksList().length}</div><div class="lbl">एकूण कामे</div></div>
   </div>
   ${leadershipShowcase('dashboard-leadership')}
   <div class="panel">
@@ -1495,11 +1601,11 @@ function overviewTab(){
 }
 
 function employeesTab(){
-  const list = (DB.employees||[]).filter(e=>e.status!=='प्रलंबित');
+  const list = getEmployeesList().filter(e=>e.status!=='प्रलंबित');
   return `
   <div class="panel">
     <div class="toolbar">
-      <h3>👥 सर्व कर्मचारी व्यवस्थापन (${list.length})</h3>
+      <h3>👥 सर्व सक्रिय कर्मचारी व्यवस्थापन (${list.length})</h3>
     </div>
     ${list.length===0? '<div class="empty">अद्याप कोणतेही कर्मचारी सक्रिय नाहीत.</div>':
     `<table>
@@ -1539,13 +1645,17 @@ function getBranchName(branchId) {
 }
 
 function deleteEmployee(empId) {
-  const emp = (DB.employees||[]).find(e=>e.id===empId);
+  const empList = getEmployeesList();
+  const emp = empList.find(e=>e.id===empId);
   const name = emp ? emp.name : empId;
   const ans = window.confirm(`⚠️ '${name}' या कर्मचाऱ्याला संस्थेतून कायमचे काढून टाकू इच्छिता का?`);
   if(!ans) return;
 
-  DB.employees = (DB.employees||[]).filter(e=>e.id!==empId);
-  DB.tasks = (DB.tasks||[]).filter(t=>t.employeeId!==empId);
+  if (DB.employees && DB.employees[empId]) {
+    delete DB.employees[empId];
+  } else if (Array.isArray(DB.employees)) {
+    DB.employees = DB.employees.filter(e=>e.id!==empId);
+  }
 
   saveDB();
   alert(`✅ '${name}' या कर्मचाऱ्याला काढून टाकले आहे!`);
@@ -1553,7 +1663,7 @@ function deleteEmployee(empId) {
 }
 
 function toggleEmpStatus(empId) {
-  const emp = (DB.employees||[]).find(e=>e.id===empId);
+  const emp = (DB.employees||{})[empId] || getEmployeesList().find(e=>e.id===empId);
   if(!emp) return;
   const newStatus = emp.status === 'सक्रिय' ? 'निष्क्रिय' : 'सक्रिय';
   const confirmMsg = newStatus === 'निष्क्रिय' 
@@ -1562,6 +1672,7 @@ function toggleEmpStatus(empId) {
   
   if(window.confirm(confirmMsg)) {
     emp.status = newStatus;
+    if (DB.employees && DB.employees[empId]) DB.employees[empId].status = newStatus;
     saveDB();
     render();
   }
@@ -1570,7 +1681,7 @@ function toggleEmpStatus(empId) {
 function openEmpDetails(id){ empDetailId = id; render(); }
 
 function employeeDetailModal(){
-  const e = (DB.employees||[]).find(x=>x.id===empDetailId);
+  const e = getEmployeesList().find(x=>x.id===empDetailId);
   if(!e) return '';
   const ds = todayStr();
   const att = (DB.attendance||{})[attKey(e.id,ds)];
@@ -1602,44 +1713,61 @@ function employeeDetailModal(){
 }
 
 function pendingTab(){
-  const pending = (DB.employees||[]).filter(e=>e.status==='प्रलंबित');
+  const pending = getEmployeesList().filter(e=>e.status==='प्रलंबित');
   return `
   <div class="panel">
-    <h3>प्रलंबित कर्मचारी नोंदणी (${pending.length})</h3>
-    ${pending.length===0? '<div class="empty">सध्या कोणतीही नोंदणी प्रलंबित नाही.</div>':
+    <h3>⏳ नवीन कर्मचारी नोंदणी अर्ज (${pending.length})</h3>
+    ${pending.length===0? '<div class="empty">सध्या कोणतीही नवीन नोंदणी प्रलंबित नाही. सर्व अर्ज मंजूर आहेत.</div>':
     pending.map(e=>`
       <div class="ledger-entry" style="border-right-color:var(--warn);margin-bottom:12px;">
         <div style="display:flex;gap:12px;align-items:center;">
-          ${e.photo? `<img src="${e.photo}" style="width:50px;height:50px;border-radius:8px;object-fit:cover;">`:''}
+          ${e.photo? `<img src="${e.photo}" style="width:55px;height:55px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">`:''}
           <div style="flex:1;">
             <div class="ledger-date">${e.name} (${e.id})</div>
             <div class="ledger-row"><span>मोबाईल:</span><b>${e.mobile}</b></div>
             <div class="ledger-row"><span>पद:</span><b>${e.designation}</b></div>
+            <div class="ledger-row"><span>केंद्र:</span><b>${getBranchName(e.branchId)}</b></div>
+            <div class="ledger-row"><span>युझरनेम:</span><b>${e.username}</b></div>
           </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="small-btn approve" onclick="approveEmp('${e.id}')" style="flex:1;">मंजूर करा</button>
-          <button class="small-btn reject" onclick="rejectEmp('${e.id}')" style="flex:1;">नकार द्या / काढा</button>
+          <button class="small-btn approve" onclick="approveEmp('${e.id}')" style="flex:1;padding:9px;">✅ मंजूर करा (Approve)</button>
+          <button class="small-btn reject" onclick="rejectEmp('${e.id}')" style="flex:1;padding:9px;">❌ नकार द्या (Reject)</button>
         </div>
       </div>`).join('')}
   </div>`;
 }
 
 function approveEmp(id){
-  const e = (DB.employees||[]).find(x=>x.id===id);
-  if(e) { e.status = 'सक्रिय'; saveDB(); render(); }
+  const emp = (DB.employees||{})[id] || getEmployeesList().find(x=>x.id===id);
+  if(emp) { 
+    emp.status = 'सक्रिय'; 
+    if(DB.employees && DB.employees[id]) DB.employees[id].status = 'सक्रिय';
+    saveDB(); 
+    render(); 
+    alert(`✅ ${emp.name} यांची नोंदणी मंजूर केली आहे. आता ते लॉगिन करू शकतात.`);
+  }
 }
+
 function rejectEmp(id){
-  DB.employees = (DB.employees||[]).filter(x=>x.id!==id);
-  saveDB(); render();
+  if(confirm("हा नोंदणी अर्ज नाकारून काढून टाकायचा का?")) {
+    if (DB.employees && DB.employees[id]) {
+      delete DB.employees[id];
+    } else if (Array.isArray(DB.employees)) {
+      DB.employees = DB.employees.filter(x=>x.id!==id);
+    }
+    saveDB(); 
+    render();
+  }
 }
 
 function leaveRequestsTab(){
+  const allLeaves = getLeavesList();
   return `
   <div class="panel">
-    <h3>रजा विनंती अर्ज (${(DB.leaves||[]).length})</h3>
-    ${(DB.leaves||[]).length===0? '<div class="empty">सध्या कोणताही अर्ज नाही.</div>':
-    DB.leaves.map(l=>`
+    <h3>रजा विनंती अर्ज (${allLeaves.length})</h3>
+    ${allLeaves.length===0? '<div class="empty">सध्या कोणताही अर्ज नाही.</div>':
+    allLeaves.map(l=>`
       <div class="ledger-entry" style="margin-bottom:10px;">
         <div class="ledger-date">${l.applicantName} (${l.applicantCenter})</div>
         <div class="ledger-row"><span>कालावधी:</span><b>${l.leaveDate}</b></div>
@@ -1655,19 +1783,28 @@ function leaveRequestsTab(){
 }
 
 function updateLeave(id, status){
-  const l = (DB.leaves||[]).find(x=>x.id===id);
-  if(l) { l.status = status; saveDB(); render(); }
+  if(DB.leaves && DB.leaves[id]) {
+    DB.leaves[id].status = status;
+    saveDB(); render();
+  }
 }
 
 function adminSettingsTab(){
+  const isBioLinked = !!localStorage.getItem('nbss_bio_auth');
   return `
   <div class="panel" style="max-width:500px;">
     <h3>🔐 प्रशासक पासवर्ड व थंब सेटिंग्ज</h3>
     <p style="font-size:13px;color:var(--text-muted);">सध्याचे लॉगिन: <b>${session.name}</b> (${session.username})</p>
     
     <div style="margin:16px 0;padding:14px;background:var(--paper);border-radius:12px;">
-      <label style="font-weight:700;color:var(--ink);display:block;margin-bottom:6px;">👆 थंब लॉगिन लिंक करा (Fingerprint):</label>
-      <button class="btn btn-bio" id="adm-enable-bio" style="margin:0;">👆 ॲडमिन थंब जोडा</button>
+      <label style="font-weight:700;color:var(--ink);display:block;margin-bottom:6px;">👆 थंब लॉगिन (Fingerprint):</label>
+      <small style="color:var(--text-muted);display:block;margin-bottom:10px;">
+        ${isBioLinked ? 'या फोनवर ॲडमिन थंब लिंक केलेला आहे.' : 'या फोनवर कोणताही थंब लिंक केलेला नाही.'}
+      </small>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-bio" id="adm-enable-bio" style="margin:0;flex:1;">${isBioLinked ? '🔄 थंब अपडेट करा' : '👆 ॲडमिन थंब जोडा'}</button>
+        ${isBioLinked ? `<button class="btn btn-secondary" id="adm-remove-bio" style="margin:0;flex:1;border-color:var(--danger);color:var(--danger);">🗑️ थंब काढा</button>` : ''}
+      </div>
     </div>
 
     <h3 style="font-size:14px;margin-top:20px;">पासवर्ड बदला:</h3>
@@ -1698,6 +1835,9 @@ function attachAdminEvents(){
 
   const bioAdmBtn = document.getElementById('adm-enable-bio');
   if(bioAdmBtn) bioAdmBtn.onclick = ()=> registerBiometric('admin', session.username);
+
+  const removeAdmBio = document.getElementById('adm-remove-bio');
+  if(removeAdmBio) removeAdmBio.onclick = removeBiometric;
 
   const passBtn = document.getElementById('adm-change-pass-btn');
   if(passBtn) passBtn.onclick = ()=>{
